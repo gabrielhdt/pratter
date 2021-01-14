@@ -1,5 +1,7 @@
 module StrMap = Map.Make (String)
 
+(** Data structure that allow to create the [get_unary] and [get_binary]
+    functions in particular. [make_appl] can use this data structure as well. *)
 type table = {
     unary : Pratter.priority StrMap.t
   ; binary : (Pratter.priority * Pratter.associativity) StrMap.t
@@ -29,15 +31,19 @@ end
 
 module SupPrat = Pratter.Make (Support)
 
+(** [add_args tbl t args] creates the application of [t] to the list of
+    arguments [args]. *)
 let rec add_args : table -> term -> term list -> term =
  fun tbl hd args ->
   match args with
   | [] -> hd
   | a :: args -> add_args tbl (Support.make_appl tbl hd a) args
 
+(** Module of testable terms for Alcotest. *)
 module TTerm : Alcotest.TESTABLE with type t = term = struct
   type t = term
 
+  (** Syntactic equality *)
   let rec equal t u =
     match (t, u) with
     | Symb t, Symb u -> String.equal t u
@@ -59,7 +65,7 @@ let simple_binary () =
   let y = symb "y" in
   let not_parsed = Stream.of_list [ x; symb "+"; y ] in
   let parsed = add_args tbl (symb "+") [ x; y ] in
-  Alcotest.(check tterm) "simple" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.(check tterm) "x + y" (SupPrat.expression tbl not_parsed) parsed
 
 let two_operators () =
   let tbl =
@@ -75,7 +81,7 @@ let two_operators () =
     let right = add_args tbl (symb "*") [ y; z ] in
     add_args tbl (symb "+") [ x; right ]
   in
-  Alcotest.(check tterm) "two-ops" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.(check tterm) "x + y * z" (SupPrat.expression tbl not_parsed) parsed
 
 let appl_opertor () =
   let tbl =
@@ -85,14 +91,14 @@ let appl_opertor () =
   let x = symb "x" in
   let not_parsed = Stream.of_list [ f; x; symb "+"; x ] in
   let parsed = add_args tbl (symb "+") [ Support.make_appl tbl f x; x ] in
-  Alcotest.(check tterm) "appl-bin" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.(check tterm) "f x + x" (SupPrat.expression tbl not_parsed) parsed
 
 let simple_unary () =
   let tbl = { empty with unary = StrMap.add "!" 1.0 StrMap.empty } in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ symb "!"; x ] in
   let parsed = Support.make_appl tbl (symb "!") x in
-  Alcotest.(check tterm) "simple" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.(check tterm) "! x" (SupPrat.expression tbl not_parsed) parsed
 
 let unary_appl () =
   let tbl = { empty with unary = StrMap.add "!" 1.0 StrMap.empty } in
@@ -101,7 +107,7 @@ let unary_appl () =
   let not_parsed = Stream.of_list [ symb "!"; f; x ] in
   let parsed = Support.(make_appl tbl (symb "!") (make_appl tbl f x)) in
   Alcotest.(check tterm)
-    "application"
+    "! f x"
     (SupPrat.expression tbl not_parsed)
     parsed
 
@@ -116,7 +122,7 @@ let unary_appl_in () =
     Support.(make_appl tbl f inside)
   in
   Alcotest.(check tterm)
-    "application not top"
+    "f ! x"
     (SupPrat.expression tbl not_parsed)
     parsed
 
@@ -133,7 +139,7 @@ let _ =
     ; ( "unary"
       , [
           test_case "simple" `Quick simple_unary
-        ; test_case "application" `Quick unary_appl
-        ; test_case "application arg" `Quick unary_appl_in
+        ; test_case "application head" `Quick unary_appl
+        ; test_case "application argument" `Quick unary_appl_in
         ] )
     ]
