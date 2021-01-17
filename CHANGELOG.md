@@ -2,6 +2,8 @@
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Non associative operators
 
 ## [1.0.1] -- 2021-01-16
 ### Fixed
