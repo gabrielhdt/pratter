@@ -24,6 +24,11 @@ type priority = float
 (** Priority of operators. If [*] has a higher priority than [+], than [x + y *
     z] is parsed [x + (y * z)]. *)
 
+(** A type to designate operators and their properties. *)
+type operator =
+  | Bin of associativity  (** Binary operator with an associativity. *)
+  | Una  (** Unary operator. *)
+
 (** Types and utilities on terms that are to be Pratt parsed. *)
 module type SUPPORT = sig
   type term
@@ -33,14 +38,9 @@ module type SUPPORT = sig
   type table
   (** The table is used to store available operators. *)
 
-  val get_unary : table -> term -> priority option
-  (** [get_unary tbl t] returns the priority, or binding power of operator
-      identified [t] if it is a unary operator, or [None]. *)
-
-  val get_binary : table -> term -> (priority * associativity) option
-  (** [get_binary tbl t] returns the priority (or binding power) and
-      associativity of operator [t], or [None] if [t] isn't a binary
-      operator. *)
+  val get : table -> term -> (operator * priority) option
+  (** [get tbl t] returns [None] if [t] is not an operator according to table
+      [tbl], and it returns the properties of the operator otherwise. *)
 
   val make_appl : table -> term -> term -> term
   (** [make_appl tbl t u] returns the application of [t] to [u], sometimes noted
@@ -69,33 +69,8 @@ functor
   struct
     type table = Sup.table
 
-    (** [lbp tbl t] returns the left binding power of term [t] (which is 0 if
-        [t] is not an operator). *)
-    let lbp : table -> Sup.term -> priority =
-     fun tbl t ->
-      match Sup.get_unary tbl t with
-      | Some bp -> bp
-      | None -> (
-          match Sup.get_binary tbl t with
-          | Some (bp, _) -> bp
-          | None -> (* [t] must be an operator *) assert false )
-
-    (** [is_assoc tbl t] returns [true] iff term [t] is associative in table
-        [tbl]. *)
-    let assoc : table -> Sup.term -> associativity =
-     fun tbl t ->
-      match Sup.get_binary tbl t with
-      | Some (_, Left) -> Left
-      | Some (_, Right) -> Right
-      | Some (_, Neither) -> Neither
-      | None -> assert false
-
     (* NOTE: among the four functions operating on streams, only [expression]
        consumes elements from it. *)
-
-    (** [is_binop tbl t] returns [true] iff term [t] is a binary operator. *)
-    let is_binop : table -> Sup.term -> bool =
-     fun tbl t -> match Sup.get_binary tbl t with Some _ -> true | _ -> false
 
     exception ParseError of string * Sup.term
 
@@ -104,28 +79,36 @@ functor
         is a production rule. *)
     let rec nud : table -> Sup.term Stream.t -> Sup.term -> Sup.term =
      fun tbl strm t ->
-      match Sup.get_unary tbl t with
-      | Some rbp ->
+      match Sup.get tbl t with
+      | Some (Una, rbp) ->
           Sup.make_appl tbl t (expression ~tbl ~rbp ~rassoc:Neither strm)
       | _ -> t
 
-    (** [led tbl left t] is the production of term [t] with left context
-        [left]. *)
-    and led : table -> Sup.term Stream.t -> Sup.term -> Sup.term -> Sup.term =
-     fun tbl strm left t ->
-      match Sup.get_binary tbl t with
-      | Some (bp, assoc) ->
-          let rbp =
-            match assoc with
-            | Right -> bp *. (1. -. epsilon_float)
-            | Left | Neither -> bp
-          in
-          Sup.(
-            make_appl tbl (make_appl tbl t left)
-              (expression ~tbl ~rbp ~rassoc:assoc strm))
-      | _ -> assert false
+    (** [led ~tbl ~strm ~left t assoc bp] is the production of term [t] with
+        left context [left]. We have the invariant that [t] is a binary operator
+        with associativity [assoc] and binding power [bp]. This invariant is
+        ensured while called in {!val:expression}. *)
+    and led :
+           tbl:table
+        -> strm:Sup.term Stream.t
+        -> left:Sup.term
+        -> Sup.term
+        -> associativity
+        -> priority
+        -> Sup.term =
+     fun ~tbl ~strm ~left t assoc bp ->
+      let rbp =
+        match assoc with
+        | Right -> bp *. (1. -. epsilon_float)
+        | Left | Neither -> bp
+      in
+      Sup.(
+        make_appl tbl (make_appl tbl t left)
+          (expression ~tbl ~rbp ~rassoc:assoc strm))
 
-    (* [t] must be an operator. *)
+    (** [expression ~tbl ~rbp ~rassoc strm] parses next token of stream
+        [strm] with previous operator having a right binding power [~rbp] and
+        associativity [~rassoc]. *)
     and expression :
            tbl:table
         -> rbp:priority
@@ -138,25 +121,27 @@ functor
       let rec aux left =
         match Stream.peek strm with
         | None -> left
-        | Some pt when is_binop tbl pt ->
-            (* If [pt] has a higher left binding power than the binding power of
-               the previous operator in the stream. *)
-            let lbp = lbp tbl pt in
-            let lassoc = assoc tbl pt in
-            if lbp > rbp || (lbp = rbp && lassoc = Right && rassoc = Right) then
-              (* Performed before to execute side effect on stream. *)
-              let next = Stream.next strm in
-              aux (led tbl strm left next)
-            else if lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
-            then left
-            else
-              let msg = "Not associative operators with same binding power" in
-              raise (ParseError (msg, pt))
-        | Some _ ->
-            (* argument of an application *)
-            let next = Stream.next strm in
-            let right = nud tbl strm next in
-            aux (Sup.make_appl tbl left right)
+        | Some pt -> (
+            match Sup.get tbl pt with
+            | Some (Bin lassoc, lbp) ->
+                if lbp > rbp || (lbp = rbp && lassoc = Right && rassoc = Right)
+                then
+                  (* Performed before to execute side effect on stream. *)
+                  let next = Stream.next strm in
+                  aux (led ~tbl ~strm ~left next lassoc lbp)
+                else if
+                  lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
+                then left
+                else
+                  let msg =
+                    "Not associative operators with same binding power"
+                  in
+                  raise (ParseError (msg, pt))
+            | _ ->
+                (* argument of an application *)
+                let next = Stream.next strm in
+                let right = nud tbl strm next in
+                aux (Sup.make_appl tbl left right) )
       in
 
       let next = Stream.next strm in
