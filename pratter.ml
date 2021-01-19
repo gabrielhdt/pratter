@@ -42,9 +42,9 @@ module type SUPPORT = sig
   (** [get tbl t] returns [None] if [t] is not an operator according to table
       [tbl], and it returns the properties of the operator otherwise. *)
 
-  val make_appl : table -> term -> term -> term
-  (** [make_appl tbl t u] returns the application of [t] to [u], sometimes noted
-      [@(t, u)], or just [t u], with [tbl] being the table of operators. *)
+  val make_appl : term -> term -> term
+  (** [make_appl t u] returns the application of [t] to [u], sometimes noted
+      [@(t, u)], or just [t u]. *)
 end
 
 module Make : functor (Sup : SUPPORT) -> sig
@@ -81,7 +81,7 @@ functor
      fun tbl strm t ->
       match Sup.get tbl t with
       | Some (Una, rbp) ->
-          Sup.make_appl tbl t (expression ~tbl ~rbp ~rassoc:Neither strm)
+          Sup.make_appl t (expression ~tbl ~rbp ~rassoc:Neither strm)
       | _ -> t
 
     (** [led ~tbl ~strm ~left t assoc bp] is the production of term [t] with
@@ -103,7 +103,7 @@ functor
         | Left | Neither -> bp
       in
       Sup.(
-        make_appl tbl (make_appl tbl t left)
+        make_appl (make_appl t left)
           (expression ~tbl ~rbp ~rassoc:assoc strm))
 
     (** [expression ~tbl ~rbp ~rassoc strm] parses next token of stream
@@ -141,7 +141,7 @@ functor
                 (* argument of an application *)
                 let next = Stream.next strm in
                 let right = nud tbl strm next in
-                aux (Sup.make_appl tbl left right) )
+                aux (Sup.make_appl left right) )
       in
 
       let next = Stream.next strm in

@@ -5,7 +5,7 @@ type table = {
   ; binary : (Pratter.priority * Pratter.associativity) StrMap.t
 }
 (** Data structure that allow to create the [get_unary] and [get_binary]
-    functions in particular. [make_appl] can use this data structure as well. *)
+    functions in particular. *)
 
 let empty : table = { unary = StrMap.empty; binary = StrMap.empty }
 
@@ -31,7 +31,7 @@ struct
           with Not_found -> None ) )
     | _ -> None
 
-  let make_appl _ t u = Appl (t, u)
+  let make_appl t u = Appl (t, u)
 end
 
 module SupPrat = Pratter.Make (Support)
@@ -42,7 +42,7 @@ let rec add_args : table -> term -> term list -> term =
  fun tbl hd args ->
   match args with
   | [] -> hd
-  | a :: args -> add_args tbl (Support.make_appl tbl hd a) args
+  | a :: args -> add_args tbl (Support.make_appl hd a) args
 
 (** Module of testable terms for Alcotest. *)
 module TTerm : Alcotest.TESTABLE with type t = term = struct
@@ -94,14 +94,14 @@ let appl_opertor () =
   let f = symb "f" in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ f; x; symb "+"; x ] in
-  let parsed = add_args tbl (symb "+") [ Support.make_appl tbl f x; x ] in
+  let parsed = add_args tbl (symb "+") [ Support.make_appl f x; x ] in
   Alcotest.(check tterm) "f x + x" (SupPrat.expression tbl not_parsed) parsed
 
 let simple_unary () =
   let tbl = { empty with unary = StrMap.add "!" 1.0 StrMap.empty } in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ symb "!"; x ] in
-  let parsed = Support.make_appl tbl (symb "!") x in
+  let parsed = Support.make_appl (symb "!") x in
   Alcotest.(check tterm) "! x" (SupPrat.expression tbl not_parsed) parsed
 
 let unary_appl () =
@@ -109,7 +109,7 @@ let unary_appl () =
   let x = symb "x" in
   let f = symb "f" in
   let not_parsed = Stream.of_list [ symb "!"; f; x ] in
-  let parsed = Support.(make_appl tbl (symb "!") (make_appl tbl f x)) in
+  let parsed = Support.(make_appl (symb "!") (make_appl f x)) in
   Alcotest.(check tterm) "! f x" (SupPrat.expression tbl not_parsed) parsed
 
 let unary_appl_in () =
@@ -119,8 +119,8 @@ let unary_appl_in () =
   let fac = symb "!" in
   let not_parsed = Stream.of_list [ f; fac; x ] in
   let parsed =
-    let inside = Support.make_appl tbl fac x in
-    Support.(make_appl tbl f inside)
+    let inside = Support.make_appl fac x in
+    Support.(make_appl f inside)
   in
   Alcotest.(check tterm) "f ! x" (SupPrat.expression tbl not_parsed) parsed
 
