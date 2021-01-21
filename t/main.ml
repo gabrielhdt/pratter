@@ -202,7 +202,31 @@ let precedences_eq_not_assoc () =
     ( try
         ignore (SupPrat.expression tbl not_parsed);
         false
-      with SupPrat.ParseError (_, _) -> true )
+      with SupPrat.WrongAssoc (_, _) -> true )
+    true
+
+let partial_binary () =
+  let tbl = StrMap.singleton "+" (1.0, Pratter.Left) in
+  let tbl = { empty with binary = tbl } in
+  let not_parsed = Stream.of_list [ symb "x"; symb "+" ] in
+  Alcotest.(check bool)
+    "x +"
+    ( try
+        ignore (SupPrat.expression tbl not_parsed);
+        false
+      with SupPrat.TooFewArguments -> true )
+    true
+
+let partial_unary () =
+  let tbl = StrMap.singleton "!" 1.0 in
+  let tbl = { empty with unary = tbl } in
+  let not_parsed = Stream.of_list [ symb "!" ] in
+  Alcotest.(check bool)
+    "!"
+    ( try
+        ignore (SupPrat.expression tbl not_parsed);
+        false
+      with SupPrat.TooFewArguments -> true )
     true
 
 let _ =
@@ -225,5 +249,10 @@ let _ =
           test_case "simple" `Quick simple_unary
         ; test_case "application head" `Quick unary_appl
         ; test_case "application argument" `Quick unary_appl_in
+        ] )
+    ; ( "errors"
+      , [
+          test_case "partial binary" `Quick partial_binary
+        ; test_case "partial unary" `Quick partial_unary
         ] )
     ]
