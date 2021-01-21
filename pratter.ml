@@ -48,9 +48,13 @@ module type SUPPORT = sig
 end
 
 module Make : functor (Sup : SUPPORT) -> sig
-  exception ParseError of string * Sup.term
-  (** [ParseError(s,t)] is raised when parsing term [t], and [s] gives the
-      reason. *)
+  exception WrongAssoc of Sup.term * Sup.term
+  (** Raised when there is a priority conflict between two operators. The
+      arguments are the terms that generate the conflict. *)
+
+  exception TooFewArguments
+  (** Raised when more arguments are expected. It is raised for instance on
+      partial application of operators, such as [x +]. *)
 
   val expression : Sup.table -> Sup.term Stream.t -> Sup.term
   (** [expression tbl s] parses stream of tokens [s] with table of operators
@@ -69,10 +73,11 @@ functor
   struct
     type table = Sup.table
 
+    exception WrongAssoc of Sup.term * Sup.term
+    exception TooFewArguments
+
     (* NOTE: among the four functions operating on streams, only [expression]
        consumes elements from it. *)
-
-    exception ParseError of string * Sup.term
 
     (** [nud tbl strm t] is the production of term [t] with {b no} left context.
         If [t] is not an operator, [nud] is the identity. Otherwise, the output
@@ -103,8 +108,7 @@ functor
         | Left | Neither -> bp
       in
       Sup.(
-        make_appl (make_appl t left)
-          (expression ~tbl ~rbp ~rassoc:assoc strm))
+        make_appl (make_appl t left) (expression ~tbl ~rbp ~rassoc:assoc strm))
 
     (** [expression ~tbl ~rbp ~rassoc strm] parses next token of stream
         [strm] with previous operator having a right binding power [~rbp] and
@@ -118,7 +122,7 @@ functor
      fun ~tbl ~rbp ~rassoc strm ->
       (* [aux left] inspects the stream and may consume one of its elements, or
          return [left] unchanged. *)
-      let rec aux left =
+      let rec aux (left : Sup.term) =
         match Stream.peek strm with
         | None -> left
         | Some pt -> (
@@ -132,11 +136,7 @@ functor
                 else if
                   lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
                 then left
-                else
-                  let msg =
-                    "Not associative operators with same binding power"
-                  in
-                  raise (ParseError (msg, pt))
+                else raise (WrongAssoc (left, pt))
             | _ ->
                 (* argument of an application *)
                 let next = Stream.next strm in
@@ -144,9 +144,11 @@ functor
                 aux (Sup.make_appl left right) )
       in
 
-      let next = Stream.next strm in
-      let left = nud tbl strm next in
-      aux left
+      try
+        let next = Stream.next strm in
+        let left = nud tbl strm next in
+        aux left
+      with Stream.Failure -> raise TooFewArguments
 
     let expression : table -> Sup.term Stream.t -> Sup.term =
      fun tbl strm -> expression ~tbl ~rbp:0. ~rassoc:Neither strm
