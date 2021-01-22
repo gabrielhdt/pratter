@@ -4,8 +4,7 @@ type table = {
     unary : Pratter.priority StrMap.t
   ; binary : (Pratter.priority * Pratter.associativity) StrMap.t
 }
-(** Data structure that allow to create the [get_unary] and [get_binary]
-    functions in particular. *)
+(** Data structure containing the operators. *)
 
 let empty : table = { unary = StrMap.empty; binary = StrMap.empty }
 
@@ -202,7 +201,7 @@ let precedences_eq_not_assoc () =
     ( try
         ignore (SupPrat.expression tbl not_parsed);
         false
-      with SupPrat.WrongAssoc (_, _) -> true )
+      with SupPrat.OpConflict (_, _) -> true )
     true
 
 let partial_binary () =
