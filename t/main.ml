@@ -27,7 +27,7 @@ struct
           try
             let bp, assoc = StrMap.find id binary in
             Some (Bin assoc, bp)
-          with Not_found -> None ) )
+          with Not_found -> None))
     | _ -> None
 
   let make_appl t u = Appl (t, u)
@@ -182,7 +182,8 @@ let precedences_gt_not_assoc () =
   (* x + y * z = (x + y) * z when bp(+) > bp( * ) and both are not
      associative *)
   let tbl =
-    Pratter.(StrMap.(empty |> add "+" (-1., Neither) |> add "*" (-1.1, Neither)))
+    Pratter.(
+      StrMap.(empty |> add "+" (-1., Neither) |> add "*" (-1.1, Neither)))
     (* NOTE that negative binding powers are accepted. *)
   in
   let tbl = { empty with binary = tbl } in
@@ -228,10 +229,10 @@ let precedences_eq_not_assoc () =
   in
   Alcotest.(check bool)
     "x + y * z"
-    ( try
-        ignore (SupPrat.expression tbl not_parsed);
-        false
-      with SupPrat.OpConflict (_, _) -> true )
+    (try
+       ignore (SupPrat.expression tbl not_parsed);
+       false
+     with SupPrat.OpConflict (_, _) -> true)
     true
 
 let partial_binary () =
@@ -240,10 +241,10 @@ let partial_binary () =
   let not_parsed = Stream.of_list [ symb "x"; symb "+" ] in
   Alcotest.(check bool)
     "x +"
-    ( try
-        ignore (SupPrat.expression tbl not_parsed);
-        false
-      with SupPrat.TooFewArguments -> true )
+    (try
+       ignore (SupPrat.expression tbl not_parsed);
+       false
+     with SupPrat.TooFewArguments -> true)
     true
 
 let partial_unary () =
@@ -252,10 +253,10 @@ let partial_unary () =
   let not_parsed = Stream.of_list [ symb "!" ] in
   Alcotest.(check bool)
     "!"
-    ( try
-        ignore (SupPrat.expression tbl not_parsed);
-        false
-      with SupPrat.TooFewArguments -> true )
+    (try
+       ignore (SupPrat.expression tbl not_parsed);
+       false
+     with SupPrat.TooFewArguments -> true)
     true
 
 let bin_start_expr () =
@@ -265,10 +266,10 @@ let bin_start_expr () =
   in
   let not_parsed = Stream.of_list [ symb "+"; symb "x"; symb "x" ] in
   Alcotest.check tterm "+ x x"
-    ( try
-        ignore (SupPrat.expression tbl not_parsed);
-        assert false
-      with SupPrat.UnexpectedBin t -> t )
+    (try
+       ignore (SupPrat.expression tbl not_parsed);
+       assert false
+     with SupPrat.UnexpectedBin t -> t)
     (symb "+")
 
 let bin_bin () =
@@ -278,10 +279,10 @@ let bin_bin () =
   in
   let not_parsed = Stream.of_list [ symb "x"; symb "+"; symb "+"; symb "x" ] in
   Alcotest.check tterm "x + + x"
-    ( try
-        ignore (SupPrat.expression tbl not_parsed);
-        assert false
-      with SupPrat.UnexpectedBin t -> t )
+    (try
+       ignore (SupPrat.expression tbl not_parsed);
+       assert false
+     with SupPrat.UnexpectedBin t -> t)
     (symb "+")
 
 let _ =

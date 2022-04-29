@@ -152,7 +152,7 @@ functor
                 (* argument of an application *)
                 let next = Stream.next strm in
                 let right = nud tbl strm next in
-                aux (Sup.make_appl left right) )
+                aux (Sup.make_appl left right))
       in
 
       try
