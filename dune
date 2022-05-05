@@ -1,3 +1,4 @@
 (library
  (name pratter)
+ (libraries camlp-streams)
  (public_name pratter))

@@ -19,4 +19,4 @@ test:
     - dune runtest
   parallel:
     matrix:
-      - OCAML_VERSION: ["4.02", "4.04", "4.06", "4.07", "4.08", "4.09", "4.10"]
+      - OCAML_VERSION: ["4.02", "4.13", "4.14"]
