@@ -3,10 +3,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [1.2.1] -- 2022-05-05
-### Fixed
-- Use `camlp-streams` because `Stdlib.Stream` becomes deprecated in OCaml 4.14.
-- Property based testing with `QCheck`.
+## [1.2.1] -- 2022-05-06
+### Added
+- Property based testing with QCheck.
+### Changed
+- Depends on `camlp-streams` (because `Stdlib.Stream` becomes deprecated in OCaml 4.14).
+- New continuous integration recipe.
 
 ## [1.2] -- 2021-05-05
 ### Added
