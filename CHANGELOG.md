@@ -1,7 +1,14 @@
 # Changelog
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
+### Added
+- Postfix operators
+### Changed
+- `Una` constructor changed to `Prefix` 🧨
+- `Bin` constructor changed to `Infix` 🧨
+- `expression` can raise exception `UnexpectedPostfix`
 
 ## [1.2.1] -- 2022-05-06
 ### Added
