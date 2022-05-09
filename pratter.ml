@@ -77,8 +77,6 @@ functor
   (Sup : SUPPORT)
   ->
   struct
-    type table = Sup.table
-
     type error =
       [ `OpConflict of Sup.term * Sup.term
       | `UnexpectedInfix of Sup.term
@@ -93,9 +91,7 @@ functor
     (** [nud tbl strm t] is the production of term [t] with {b no} left context.
         If [t] is not a prefix operator, [nud] is the identity. Otherwise, the
         output is a production rule. *)
-    let rec nud : table -> Sup.term Stream.t -> Sup.term -> (Sup.term, _) result
-        =
-     fun tbl strm t ->
+    let rec nud tbl strm t =
       match Sup.get tbl t with
       | Some (Prefix, rbp) ->
           Result.map (Sup.make_appl t)
@@ -110,15 +106,7 @@ functor
         left context [left]. We have the invariant that [t] is a binary operator
         with associativity [assoc] and binding power [bp]. This invariant is
         ensured while called in {!val:expression}. *)
-    and led :
-           tbl:table
-        -> strm:Sup.term Stream.t
-        -> left:Sup.term
-        -> Sup.term
-        -> associativity
-        -> priority
-        -> (Sup.term, _) result =
-     fun ~tbl ~strm ~left t assoc bp ->
+    and led ~tbl ~strm ~left t assoc bp =
       let rbp =
         match assoc with
         | Right -> bp *. (1. -. epsilon_float)
@@ -131,13 +119,7 @@ functor
     (** [expression ~tbl ~rbp ~rassoc strm] parses next token of stream
         [strm] with previous operator having a right binding power [~rbp] and
         associativity [~rassoc]. *)
-    and expression :
-           tbl:table
-        -> rbp:priority
-        -> rassoc:associativity
-        -> Sup.term Stream.t
-        -> (Sup.term, _) result =
-     fun ~tbl ~rbp ~rassoc strm ->
+    and expression ~tbl ~rbp ~rassoc strm =
       (* [aux left] inspects the stream and may consume one of its elements, or
          return [left] unchanged. *)
       let rec aux (left : Sup.term) =
@@ -174,6 +156,5 @@ functor
         Result.bind left aux
       with Stream.Failure -> error `TooFewArguments
 
-    let expression : table -> Sup.term Stream.t -> (Sup.term, _) result =
-     fun tbl -> expression ~tbl ~rbp:neg_infinity ~rassoc:Neither
+    let expression tbl = expression ~tbl ~rbp:neg_infinity ~rassoc:Neither
   end
