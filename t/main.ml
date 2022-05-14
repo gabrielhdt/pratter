@@ -1,3 +1,11 @@
+(** {1 Setup} *)
+
+(** {2 Pratter setup} *)
+
+type term = Terms.t
+
+let symb, appl, add_args = Terms.(symb, appl, add_args)
+
 module StrMap = Map.Make (String)
 
 type table = {
@@ -10,12 +18,6 @@ type table = {
 let empty : table =
   { prefix = StrMap.empty; infix = StrMap.empty; postfix = StrMap.empty }
 
-(** A simple term structure. *)
-type term = Appl of term * term | Symb of string
-
-(** [symb id] creates a term from identifier [id]. *)
-let symb id = Symb id
-
 module Support : Pratter.SUPPORT with type term = term and type table = table =
 struct
   type nonrec term = term
@@ -23,7 +25,7 @@ struct
 
   let get { prefix; infix; postfix } t =
     match t with
-    | Symb id -> (
+    | Terms.Symb id -> (
         try Some (Pratter.Prefix, StrMap.find id prefix)
         with Not_found -> (
           try
@@ -34,70 +36,48 @@ struct
             with Not_found -> None)))
     | _ -> None
 
-  let make_appl t u = Appl (t, u)
+  let make_appl = appl
 end
 
 module SupPrat = Pratter.Make (Support)
 
-(** [add_args t args] creates the application of [t] to the list of
-    arguments [args]. *)
-let rec add_args : term -> term list -> term =
- fun hd args ->
-  match args with
-  | [] -> hd
-  | a :: args -> add_args (Support.make_appl hd a) args
+(** {2 Alcotest setup} *)
 
-(** Module of testable terms for Alcotest. *)
-module TTerm : Alcotest.TESTABLE with type t = term = struct
-  type t = term
-
-  (** Syntactic equality *)
-  let rec equal t u =
-    match (t, u) with
-    | Symb t, Symb u -> t = u
-    | Appl (t, t'), Appl (u, u') -> equal t u && equal t' u'
-    | _ -> false
-
-  let rec pp oc t =
-    match t with
-    | Appl (t, u) -> Format.fprintf oc "@(%a, %a)" pp t pp u
-    | Symb id -> Format.pp_print_string oc id
-end
-
-let tterm : (module Alcotest.TESTABLE with type t = term) = (module TTerm)
 let return, error = Result.(ok, error)
 
 module RTTerm : Alcotest.TESTABLE with type t = (term, SupPrat.error) result =
 struct
-  type t = (term, SupPrat.error) result
+  type t = (Terms.t, SupPrat.error) result
 
   let equal t u =
     match (t, u) with
     | Ok t, Ok u
     | Error (`UnexpectedInfix t), Error (`UnexpectedInfix u)
     | Error (`UnexpectedPostfix t), Error (`UnexpectedPostfix u) ->
-        TTerm.equal t u
+        Terms.equal t u
     | Error `TooFewArguments, Error `TooFewArguments -> true
     | Error (`OpConflict (t1, t2)), Error (`OpConflict (u1, u2)) ->
-        TTerm.equal t1 u1 && TTerm.equal t2 u2
+        Terms.equal t1 u1 && Terms.equal t2 u2
     | _, _ -> false
 
   let pp oc t =
     match t with
-    | Ok t -> TTerm.pp oc t
+    | Ok t -> Terms.pp oc t
     | Error (`UnexpectedInfix t) ->
-        Format.fprintf oc "Unexpected infix \"%a\"" TTerm.pp t
+        Format.fprintf oc "Unexpected infix \"%a\"" Terms.pp t
     | Error (`UnexpectedPostfix t) ->
-        Format.fprintf oc "Unexpected postfix \"%a\"" TTerm.pp t
+        Format.fprintf oc "Unexpected postfix \"%a\"" Terms.pp t
     | Error `TooFewArguments -> Format.pp_print_string oc "Too few arguments"
     | Error (`OpConflict (t, u)) ->
-        Format.fprintf oc "Operator conflict between \"%a\" and \"%a\"" TTerm.pp
-          t TTerm.pp u
+        Format.fprintf oc "Operator conflict between \"%a\" and \"%a\"" Terms.pp
+          t Terms.pp u
 end
 
 let rtterm :
     (module Alcotest.TESTABLE with type t = (term, SupPrat.error) result) =
   (module RTTerm)
+
+(** {1 Simple tests} These tests define the behaviour of the Pratt parser. *)
 
 let simple_infix () =
   let tbl = StrMap.add "+" (1.0, Pratter.Left) StrMap.empty in
@@ -170,7 +150,7 @@ let double_prefix () =
   (* --x = -(-x) *)
   let tbl = { empty with prefix = StrMap.(add "-" 1.0 empty) } in
   let not_parsed = Stream.of_list [ symb "-"; symb "-"; symb "x" ] in
-  let parsed = return @@ Appl (symb "-", Appl (symb "-", symb "x")) in
+  let parsed = return @@ appl (symb "-") (appl (symb "-") (symb "x")) in
   Alcotest.check rtterm "--x" (SupPrat.expression tbl not_parsed) parsed
 
 let precedences_left_same () =
@@ -409,7 +389,7 @@ let bin_bin () =
     (SupPrat.expression tbl not_parsed)
     (error @@ `UnexpectedInfix (symb "+"))
 
-(** Qcheck tests *)
+(** {1 Property-based tests with [QCheck]} *)
 
 (** A generators for strings of length 1 made of printable ASCII characters. *)
 let string1_readable = QCheck.Gen.(map (Printf.sprintf "%c") printable)
@@ -430,22 +410,19 @@ let term_gen =
 (** A {QCheck.arbitrary} for {b non-empty} term lists. *)
 let term_list =
   let pp_sep ppf () = Format.fprintf ppf "; " in
-  let print = Format.asprintf "[%a]" (Format.pp_print_list ~pp_sep TTerm.pp) in
+  let print = Format.asprintf "[%a]" (Format.pp_print_list ~pp_sep Terms.pp) in
   let size = QCheck.Gen.(2 -- 100) in
   QCheck.(make ~print Gen.(list_size size term_gen))
 
-(** [count_symb t] returns the number of symbols in term [t]. *)
-let rec count_symb t : int =
-  match t with Symb _ -> 1 | Appl (s, t) -> count_symb s + count_symb t
-
-(** [depth t] returns the depth of term [t]. *)
-let rec depth t : int =
-  match t with Symb _ -> 0 | Appl (s, t) -> 1 + max (depth s) (depth t)
-
 (** A sample table to be used in tests. *)
 let table =
-  let infix = StrMap.(add "+" (1.1, Pratter.Left) empty) in
-  let infix = StrMap.(add "/" (1.5, Pratter.Left) infix) in
+  let infix =
+    StrMap.(
+      empty
+      |> add "+" (1.1, Pratter.Left)
+      |> add "*" (1.5, Pratter.Right)
+      |> add "=" (0.5, Pratter.Neither))
+  in
   let postfix = StrMap.(add "!" 1.0 empty) in
   let prefix = StrMap.(add "-" 0.9 empty) in
   { postfix; prefix; infix }
@@ -459,7 +436,8 @@ let constant_leaf_amount =
         assume (l <> []);
         match SupPrat.expression table (Stream.of_list l) with
         | Ok t ->
-            count_symb t = List.fold_right (fun t -> ( + ) (count_symb t)) l 0
+            Terms.count_symb t
+            = List.fold_right (fun t -> ( + ) (Terms.count_symb t)) l 0
         | Error _ -> true))
 
 (** The depth of the parsed term is superior than the maximal depth of the input
@@ -469,7 +447,7 @@ let greater_depth_parsed =
     Test.make ~name:"more_depth_in_parsed_exp" ~count:100 term_list (fun l ->
         assume (l <> []);
         match SupPrat.expression table (Stream.of_list l) with
-        | Ok t -> depth t > List.(map depth l |> fold_left max 0)
+        | Ok t -> Terms.depth t > List.(map Terms.depth l |> fold_left max 0)
         | Error _ -> true))
 
 (** When the table is empty, parsing a list only builds an n-ary application. *)
@@ -483,10 +461,43 @@ let empty_table_id =
       let parsed = SupPrat.expression empty (Stream.of_list l) in
       RTTerm.equal sequential_application parsed)
 
+(** {2 Compare against a YACC parser}*)
+
+let symb_gen =
+  let idgen = QCheck.Gen.(map (Printf.sprintf "%c") (char_range 'A' 'Z')) in
+  let opgen = QCheck.Gen.oneofa [| "+"; "-"; "*"; "!" |] in
+  QCheck.Gen.(map Terms.symb (frequency [ (4, idgen); (1, opgen) ]))
+
+(** Generator for lists of symbols. *)
+let slist =
+  let size = QCheck.Gen.(2 -- 15) in
+  let print =
+    let pp_sep ppf () = Format.fprintf ppf "; " in
+    Format.(asprintf "[%a]" (pp_print_list ~pp_sep Terms.pp))
+  in
+  QCheck.(make ~print Gen.(list_size size symb_gen))
+
+let yacc_parse str =
+  try Some (UarithGram.expr1 UarithLex.token (Lexing.from_string str))
+  with Parsing.Parse_error -> None
+
+let str_of_slist sl =
+  sl |> List.map (Format.asprintf "%a" Terms.pp) |> String.concat " "
+
+let compare_yacc =
+  QCheck.(
+    Test.make ~name:"compare_yacc" ~count:1000 slist (fun l ->
+        let res = SupPrat.expression table (Stream.of_list l) in
+        let expr = yacc_parse (str_of_slist l) in
+        assume (Result.is_ok res && expr <> None);
+        Option.get expr = Result.get_ok res))
+
 let _ =
   let qsuite =
     List.map QCheck_alcotest.to_alcotest
-      [ constant_leaf_amount; greater_depth_parsed; empty_table_id ]
+      [
+        constant_leaf_amount; greater_depth_parsed; empty_table_id; compare_yacc
+      ]
   in
   let open Alcotest in
   run "Simple terms"
