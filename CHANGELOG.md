@@ -3,6 +3,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
+
+## [2.0] -- 2022-06-15
 ### Added
 - Postfix operators
 - Comparison against a YACC parser for a small arithmetic-like language of the form
