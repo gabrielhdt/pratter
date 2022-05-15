@@ -5,6 +5,8 @@ Lines marked with 🧨 describe breaking changes.
 ## [Unreleased]
 ### Added
 - Postfix operators
+- Comparison against a YACC parser for a small arithmetic-like language of the form
+  `t ::= t t | t + t | - t | t * t | t = t | t !`
 ### Changed
 - 🧨 `Una` constructor changed to `Prefix`
 - 🧨 `Bin` constructor changed to `Infix`

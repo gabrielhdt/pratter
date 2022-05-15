@@ -1,3 +1,7 @@
 (tests
  (names main)
  (libraries pratter alcotest qcheck qcheck-alcotest))
+
+(ocamllex uarithLex)
+
+(ocamlyacc uarithGram)
