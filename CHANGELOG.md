@@ -1,7 +1,29 @@
 # Changelog
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
+
+## [2.0] -- 2022-06-15
+### Added
+- Postfix operators
+- Comparison against a YACC parser for a small arithmetic-like language of the form
+  `t ::= t t | t + t | - t | t * t | t = t | t !`
+### Changed
+- 🧨 `Una` constructor changed to `Prefix`
+- 🧨 `Bin` constructor changed to `Infix`
+- 🧨 Errors are encoded with a polymorphic variant rather than exceptions.
+  To port code, replace sections of the form
+  ```ocaml
+  try let t = SupPrat.expression tbl s in e with
+  | ... -> ...
+  ```
+  with
+  ```ocaml
+  match SupPrat.expression tbl s with
+  | Ok t -> e
+  | Error ... -> ...
+  ```
 
 ## [1.2.1] -- 2022-05-06
 ### Added
