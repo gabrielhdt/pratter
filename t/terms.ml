@@ -3,6 +3,16 @@ module StrMap = Map.Make (String)
 (** A simple term structure. *)
 type t = Appl of t * t | Symb of string
 
+(** General eliminator. *)
+let rec elim : (string -> 'a) -> (t * t -> 'a -> 'a -> 'a) -> t -> 'a =
+ fun rs ra t ->
+  match t with
+  | Symb s -> rs s
+  | Appl (u, v) -> ra (u, v) (elim rs ra u) (elim rs ra v)
+
+let on_symb : (string -> 'a option) -> t -> 'a option =
+ fun rs -> elim rs (fun _ _ _ -> None)
+
 let appl t u = Appl (t, u)
 let symb id = Symb id
 
@@ -19,16 +29,14 @@ let rec equal t u =
   | Appl (t, t'), Appl (u, u') -> equal t u && equal t' u'
   | _ -> false
 
-(** [pp oc t] pretty prints term [t] on formatter [oc]. *)
-let rec pp oc t =
+(** [pp ppf t] pretty prints term [t] on formatter [oc]. *)
+let rec pp ppf t =
   match t with
-  | Appl (t, u) -> Format.fprintf oc "(%a %a)" pp t pp u
-  | Symb id -> Format.pp_print_string oc id
+  | Appl (t, u) -> Format.fprintf ppf "@[<1>(%a@ %a)@]" pp t pp u
+  | Symb id -> Format.pp_print_string ppf id
 
 (** [count_symb t] returns the number of symbols in term [t]. *)
-let rec count_symb t : int =
-  match t with Symb _ -> 1 | Appl (s, t) -> count_symb s + count_symb t
+let count_symb : t -> int = elim (fun _ -> 1) (fun _ -> ( + ))
 
 (** [depth t] returns the depth of term [t]. *)
-let rec depth t : int =
-  match t with Symb _ -> 0 | Appl (s, t) -> 1 + max (depth s) (depth t)
+let depth : t -> int = elim (fun _ -> 0) (fun _ dl dr -> 1 + max dl dr)
