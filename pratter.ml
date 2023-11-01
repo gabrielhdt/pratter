@@ -1,9 +1,8 @@
-(* Copyright (C) 2021,2022 Gabriel Hondet.
+(* Copyright (C) Gabriel Hondet.
    Subject to the BSD-3-Clause license *)
 
-(** This module defines a functor whose image is a parser for terms with
-    applications, infix, prefix or postfix operators. These terms are specified
-    in the argument of the functor.
+(** This module defines a function that allows to perform Pratt parsing on a
+    stream of terms which may contain user-specified operators.
 
     The algorithm implemented is an extension of the Pratt parser. The Shunting
     Yard algorithm could also be used.
