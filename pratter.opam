@@ -7,8 +7,8 @@ streams of terms to applied terms.  Terms may contain infix or prefix operators
 and native applications.  The parser is based on the Pratt parsing
 algorithm and extended to handle term application and non associative
 operators."""
-maintainer: ["koizel#pratter@aleeas.com"]
-authors: ["Gabriel Hondet"]
+maintainer: ["Gabriel Hondet <koizel#pratter@aleeas.com>"]
+authors: ["Gabriel Hondet <koizel#pratter@aleeas.com>"]
 license: "BSD-3-Clause"
 homepage: "https://github.com/gabrielhdt/pratter"
 bug-reports: "https://github.com/gabrielhdt/pratter/issues"
