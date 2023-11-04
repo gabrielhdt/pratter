@@ -1,8 +1,16 @@
 (* Copyright (C) Gabriel Hondet.
    Subject to the BSD-3-Clause license *)
 
-(** This module defines a function that allows to perform Pratt parsing on a
-    stream of terms which may contain user-specified operators.
+(** Transform strings of tokens and mixfix operators into full binary trees.
+    Operators are characterised by their associativity and their fixity.
+
+    To parse expressions of type ['a], you need to tell the parser
+    - how to concatenate two expressions with a function of type
+      ['a -> 'a -> 'a]; this function can be seen as the concatenation of two
+      binary trees (and in that case, the input of the parser is a string of
+      leaves);
+    - how to determine whether a value of ['a] should be considered as an
+      operator.
 
     The algorithm implemented is an extension of the Pratt parser. The Shunting
     Yard algorithm could also be used.
@@ -45,21 +53,22 @@ type 't error =
   ]
 (** Errors that can be encountered while parsing a stream of terms. *)
 
-(** [expression appl is_op s] parses the stream of terms [s] and turns it into
-    a single term.
+(** [expression appl is_op s] parses the stream of tokens [s] and turns it into
+    a full binary tree.
 
-    For that purpose, it uses the function [appl] such that for any terms [t]
-    and [u], [appl t u] is the application of term [t] to term [u].
+    If tokens are seen as leaves of binary trees, the function [appl] is the
+    concatenation of two binary trees. If tokens are seen as terms, [appl]
+    is the application.
 
-    The function [is_op] is in charge of specifying which terms are operators:
-    for any term [t], [is_op t] must return [None] whenever [t] isn't an
-    operator, and [Some (o, p)] whenever [t] is an operator with fixity [o] and
-    binding power [p].
+    The function [is_op] is in charge of specifying which tokens are operators:
+    for any term [t], [is_op t] must return [Some (f, p)] whenever [t] is an
+    operator with fixity [f] and binding power (or precedence) [p]. If [t]
+    isn't an operator, [is_op] should return [None].
 
     For instance, assuming that [+] is declared infix and we're working with
-    numbers, it can transform [3 + 5 + 2] encoded as the stream of terms [3, +,
-    5, +, 2] into the term [(@(+(@(+,3,5)),2)] where [@] denotes the
-    application. *)
+    numbers, it can transform [3 + 5 × 2] encoded as the stream of terms [3, +,
+    5, ×, 2] into the binary tree [@(@(×,@(@(+,3),5)),2)] where [@] denotes
+    nodes. *)
 let expression :
        appl:('a -> 'a -> 'a)
     -> is_op:('a -> (fixity * float) option)
