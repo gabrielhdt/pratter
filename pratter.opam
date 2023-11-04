@@ -1,13 +1,13 @@
 opam-version: "2.0"
-version: "2.0.0"
+version: "3.0.0"
 synopsis: "Parse strings of tokens and mixfix operators"
 description: """
-Pratter is a library that allows to map strings of symbols and mixfix
-operators to full binary trees.
+Pratter allows to transform strings of symbols and mixfix operators to full
+binary trees.
 Pratter is convenient for parsing languages made of terms with many mixfix
-operators with different associativity and precedences such as
+operators with different associativities and precedences such as
 arithmetic or λ-calculi.
-In contrast with parser generators, parsing rules can be edited dynamically.
+In contrast to parser generators, parsing rules can be edited dynamically.
 """
 maintainer: ["Gabriel Hondet <koizel#pratter@aleeas.com>"]
 authors: ["Gabriel Hondet <koizel#pratter@aleeas.com>"]

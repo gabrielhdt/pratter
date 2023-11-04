@@ -2,14 +2,12 @@
 
 By Gabriel Hondet
 
-Pratter helps you parsing streams of tokens interspersed with prefix, postfix
-or infix operators.
-Unlike parser generators such as
-[ocamlyacc](https://v2.ocaml.org/manual/lexyacc.html) or
-[Menhir](http://gallium.inria.fr/~fpottier/menhir/),
-parsing rules are written in OCaml and they can be edited dynamically.
-On the other hand Pratter can parse
-a very limited subset of what Menhir and yacc can.
+Pratter allows to transform strings of symbols and mixfix operators to full
+binary trees.
+Pratter is convenient for parsing languages made of terms with many mixfix
+operators with different associativities and precedences such as
+arithmetic or λ-calculi.
+In contrast to parser generators, parsing rules can be edited dynamically.
 
 You are free to copy, modify and distribute Pratter with attribution under the
 terms of the BSD 3 Clause license. See the [license](./LICENSE) for more details.
@@ -20,6 +18,7 @@ To compile and use pratter, you need
 
 - ocaml >= 4.08
 - dune >= 2.7
+- camlp-streams
 
 Then, at the root of the source tree,
 ```command
