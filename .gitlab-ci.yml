@@ -313,7 +313,7 @@ pages:
   # run this job only in the 'pages' branch
   rules:
     # https://docs.gitlab.com/ee/ci/yaml/#rules
-    - if: '$CI_COMMIT_REF_NAME == "pages"'
+    - if: '$CI_COMMIT_REF_NAME == "master"'
       when: on_success
   artifacts:
     paths:
