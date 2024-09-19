@@ -30,11 +30,11 @@ type associativity =
           [x + y + z] results in a syntax error. *)
 
 type 't error =
-  [ `OpConflict of 't * 't
+  [ `Op_conflict of 't * 't
     (** Priority or associativiy conflict between two operators.
         In [`OpConflict (t,o)], [o] is an operator which generates a conflict
         preventing term [t] to be parsed. *)
-  | `TooFewArguments
+  | `Too_few_arguments
     (** More arguments are expected. It is raised for instance on
         partial application of operators, such as [x +]. *)
   ]

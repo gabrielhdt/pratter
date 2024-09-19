@@ -26,16 +26,16 @@ module RTTerm :
   let equal t u =
     match (t, u) with
     | Ok t, Ok u -> Terms.equal t u
-    | Error `TooFewArguments, Error `TooFewArguments -> true
-    | Error (`OpConflict (t1, t2)), Error (`OpConflict (u1, u2)) ->
+    | Error `Too_few_arguments, Error `Too_few_arguments -> true
+    | Error (`Op_conflict (t1, t2)), Error (`Op_conflict (u1, u2)) ->
         Terms.equal t1 u1 && Terms.equal t2 u2
     | _, _ -> false
 
   let pp oc t =
     match t with
     | Ok t -> Terms.pp oc t
-    | Error `TooFewArguments -> Format.pp_print_string oc "Too few arguments"
-    | Error (`OpConflict (t, u)) ->
+    | Error `Too_few_arguments -> Format.pp_print_string oc "Too few arguments"
+    | Error (`Op_conflict (t, u)) ->
         Format.fprintf oc "@[Operator conflict between@ \"%a\"@ and@ \"%a\"@]"
           Terms.pp t Terms.pp u
 end
@@ -283,7 +283,7 @@ let postfix_exn () =
   in
   let raw = Stream.of_list [ symb "-"; symb "x"; symb "!" ] in
   Alcotest.check rtterm "- x !"
-    (error @@ `OpConflict (symb "x", symb "!"))
+    (error @@ `Op_conflict (symb "x", symb "!"))
     (expr ~ops raw)
 
 let precedences_eq_not_assoc () =
@@ -296,7 +296,7 @@ let precedences_eq_not_assoc () =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
   in
   Alcotest.check rtterm "x + y * z"
-    (error @@ `OpConflict (symb "y", symb "*"))
+    (error @@ `Op_conflict (symb "y", symb "*"))
     (expr ~ops not_parsed)
 
 let partial () =
@@ -304,10 +304,10 @@ let partial () =
     Pratter.Operators.(infix (symb_ "+") Left 1.0 <+> prefix (symb_ "!") 1.0)
   in
   let not_parsed = Stream.of_list [ symb "x"; symb "+" ] in
-  Alcotest.check rtterm "x +" (expr ~ops not_parsed) (error `TooFewArguments);
+  Alcotest.check rtterm "x +" (expr ~ops not_parsed) (error `Too_few_arguments);
   Alcotest.check rtterm "!"
     (expr ~ops (Stream.of_list [ symb "!" ]))
-    (error `TooFewArguments)
+    (error `Too_few_arguments)
 
 (** {1 Property-based tests with [QCheck]} *)
 

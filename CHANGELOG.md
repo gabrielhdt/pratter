@@ -31,6 +31,8 @@ the rule is the following. For any operator `op`
 - if `is_op op`  returns `Some (Postfix, p)`, then the operators parser must be
   built with `postfix f p`, and `f` verifies the aforementioned properties.
 
+🧨 Use camel case for errors: `OpConflict` changed to `Op_conflict` and
+`TooFewArguments` to `Too_few_arguments`.
 ### Removed
 
 🧨 Errors `UnexpectedPostfix` and `UnexpectedInfix` have been removed. If a

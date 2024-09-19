@@ -2,7 +2,7 @@
    Subject to the BSD-3-Clause license *)
 
 type associativity = Left | Right | Neither
-type 't error = [ `OpConflict of 't * 't | `TooFewArguments ]
+type 't error = [ `Op_conflict of 't * 't | `Too_few_arguments ]
 type 'a result = ('a, 'a error) Stdlib.result
 
 let ( >> ) f g x = g (f x)
@@ -83,7 +83,7 @@ let expression (type a b) ~(appl : b -> b -> b) ~(token : a -> b)
                 Result.bind (led ~strm ~left next lassoc lbp) aux
               else if lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
               then Ok left
-              else Error (`OpConflict (left, next))
+              else Error (`Op_conflict (left, next))
           | None -> (
               match ops.postfix pt with
               | Some (lbp, next) ->
@@ -91,7 +91,7 @@ let expression (type a b) ~(appl : b -> b -> b) ~(token : a -> b)
                     (* Pop the term from the stream *)
                     let _ = Stream.next strm in
                     aux (appl next left)
-                  else if lbp = rbp then Error (`OpConflict (left, next))
+                  else if lbp = rbp then Error (`Op_conflict (left, next))
                   else Ok left
               | None ->
                   (* argument of an application *)
@@ -103,6 +103,6 @@ let expression (type a b) ~(appl : b -> b -> b) ~(token : a -> b)
       let next = Stream.next strm in
       let left = nud strm next in
       Result.bind left aux
-    with Stream.Failure -> Error `TooFewArguments
+    with Stream.Failure -> Error `Too_few_arguments
   in
   expression ~rbp:neg_infinity ~rassoc:Neither
