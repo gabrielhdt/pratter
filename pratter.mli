@@ -29,13 +29,6 @@ type associativity =
       (** If [+] is not associative, then [(x + y) + z] is not [x + (y + z)] and
           [x + y + z] results in a syntax error. *)
 
-(** The fixity allows to determine where the arguments of an operator are. *)
-type fixity =
-  | Infix of associativity
-      (** The operator is between its arguments, such as [=] in [x = y]. *)
-  | Prefix  (** The operator is before its argument, such as [¬] in [¬ P]. *)
-  | Postfix  (** The operator is after its argument, such as [²] in [x²]. *)
-
 type 't error =
   [ `OpConflict of 't * 't
     (** Priority or associativiy conflict between two operators.
@@ -48,14 +41,14 @@ type 't error =
 (** Errors that can be encountered while parsing a stream of terms. *)
 
 module Operators : sig
-  type 'a t
+  type ('a, 'b) t
   (** The elements of that type drive the parser telling it which input tokens
       are operators. *)
 
   val none : _ t
   (** Tell the parser there's no operator. *)
 
-  val infix : ('a -> bool) -> associativity -> float -> 'a t
+  val infix : ('a -> 'b option) -> associativity -> float -> ('a, 'b) t
   (** [infix is a pr] tells the parser that for any input [i], if [is i] is
       true, then it's an infix operator with associativity [a] and precedence
       [pr].
@@ -63,21 +56,21 @@ module Operators : sig
       For example, use [infix = Neither 10.] to consider the equality [=] as
       infix with no associativity so that you can parse [x = y]. *)
 
-  val prefix : ('a -> bool) -> float -> 'a t
+  val prefix : ('a -> 'b option) -> float -> ('a, 'b) t
   (** [prefix is pr] tells the parser that for any input [i], if [is i] is true,
       then it's a prefix operator with precedence [pr].
 
       For example, use [prefix ¬ 1.] to consider the negation [¬] as a prefix
       operator so that you can parse [¬ x]. *)
 
-  val postfix : ('a -> bool) -> float -> 'a t
+  val postfix : ('a -> 'b option) -> float -> ('a, 'b) t
   (** [postfix is pr] tells the parser that for any input [i], if [is i] is true,
       then it's a postfix operator with precedence [pr].
 
       For example, use [postfix ! 1.] to consider the factorial [!] as a postfix
       operator so that you can parse [x !]. *)
 
-  val ( <+> ) : 'a t -> 'a t -> 'a t
+  val ( <+> ) : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) t
   (** [o <+> p] tells the parser to consider the operators specified in [o] and
       in [p]. *)
 
@@ -85,17 +78,18 @@ module Operators : sig
       You can use {!infix}, {!prefix} and {!postfix} to generate initial values
       and combine them with {!(<+>)}. *)
 
-  val cat : 'a t list -> 'a t
+  val cat : ('a, 'b) t list -> ('a, 'b) t
   (** Concatenate a list of operator specifications using [<+>]. *)
 end
 
 val expression :
-     appl:('a -> 'a -> 'a)
-  -> ops:'a Operators.t
+     appl:('b -> 'b -> 'b)
+  -> token:('a -> 'b)
+  -> ops:('a, 'b) Operators.t
   -> 'a Stream.t
-  -> ('a, 'a error) result
-(** [expression appl ops s] parses the stream of tokens [s] and turns it into
-    a full binary tree.
+  -> ('b, 'b error) result
+(** [expression appl token ops s] parses the stream of tokens [s] and turns it
+    into a full binary tree.
 
     If tokens are seen as leaves of binary trees, the function [appl] is the
     concatenation of two binary trees. If tokens are seen as terms, [appl]

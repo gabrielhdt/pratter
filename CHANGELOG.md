@@ -4,6 +4,34 @@ Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
 
+## [4.0] -- 2024-09-19
+
+### Changed
+
+🧨 A token can have different fixities depending on the context its in. For
+instance, the `-` can be declared both prefix and infix, resulting in `- x - y`
+being parsed as `(-x) - y`. Consequently the API changed. The parser now truly
+parses the input, meaning that the output datatype may be different from the
+input datatype: the main `expression` function changed from
+- `expression : ... -> 'a Stream.t -> 'a` to
+- `expression : ... -> 'a Stream.t -> 'b`.
+
+Consequently, the `~appl` argument of the expression function now operates on
+the output type, and a new argument `~token` must be given which parses tokens
+that aren't operators.
+
+The expression function also takes an `Operators.t` value instead of a function
+`is_op: 'a -> (fixity * float) option` to parse operators. To use the new datatype,
+the rule is the following. For any operator `op`
+- if `is_op op` returns `Some (Infix a, p)`, the operators parser must be built
+  with `infix f a p` where `f` is a function that parses `o` and produces an
+  output datatype.
+- if `is_op op` returns `Some (Prefix, p)`, then the operators parser must be
+  built with `prefix f p`, where `f` verifies the aforementioned properties.
+- if `is_op op`  returns `Some (Postfix, p)`, then the operators parser must be
+  built with `postfix f p`, and `f` verifies the aforementioned properties.
+
+
 ## [3.0.1] -- 2023-11-06
 
 ### Added

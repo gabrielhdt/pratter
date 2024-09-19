@@ -22,8 +22,7 @@ To compile and use pratter, you need
 
 Then, at the root of the source tree,
 ```command
-$ dune build
-$ dune install
+$ make install
 ```
 
 You can try the library in the toplevel: the following code defines a parser
@@ -34,9 +33,11 @@ for the language made of strings interspersed with infix `+` operators:
 type t = A of t * t | S of string
 # let appl t u = A (t, u);;
 val appl : t -> t -> t = <fun>
-# let is_op = function S "+" -> Some Pratter.(Infix Left, 0.3) | _ -> None;;
-val is_op : t -> (Pratter.operator * float) option = <fun>
-# Pratter.expression ~appl ~is_op (Stream.of_list [ S "x"; S "+"; S "y"]);;
+# let token = Fun.id;;
+val token : 'a -> 'a = <fun>
+# let ops = Pratter.Operators.(infix (function S "+" as s -> Some s | _ -> None) Left 0.3);;
+val ops: (t, t) Pratter.Operators.t = <abstr>
+# Pratter.expression ~token ~appl ~ops (Stream.of_list [ S "x"; S "+"; S "y"]);;
 - : (t, t Pratter.error) result = Ok (A (A (S "+", S "x"), S "y"))
 ```
 
