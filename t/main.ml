@@ -5,12 +5,15 @@ type term = Terms.t
 let symb, appl, add_args = Terms.(symb, appl, add_args)
 let expr = Pratter.expression ~appl
 
-(** Specify the operators in an assoc list. *)
-let expr_l l =
-  let is_op =
-    Terms.on_symb (fun s -> try Some (List.assoc s l) with Not_found -> None)
-  in
-  expr ~is_op
+let is (s : string) : term -> bool = function
+  | Terms.Symb u when String.equal u s -> true
+  | _ -> false
+
+let symb_ (s : string) (t : term) : term option =
+  if is s t then Some t else None
+
+let token = Fun.id
+let expr = expr ~token
 
 (** {2 Alcotest setup} *)
 
@@ -22,10 +25,7 @@ module RTTerm :
 
   let equal t u =
     match (t, u) with
-    | Ok t, Ok u
-    | Error (`UnexpectedInfix t), Error (`UnexpectedInfix u)
-    | Error (`UnexpectedPostfix t), Error (`UnexpectedPostfix u) ->
-        Terms.equal t u
+    | Ok t, Ok u -> Terms.equal t u
     | Error `TooFewArguments, Error `TooFewArguments -> true
     | Error (`OpConflict (t1, t2)), Error (`OpConflict (u1, u2)) ->
         Terms.equal t1 u1 && Terms.equal t2 u2
@@ -34,10 +34,6 @@ module RTTerm :
   let pp oc t =
     match t with
     | Ok t -> Terms.pp oc t
-    | Error (`UnexpectedInfix t) ->
-        Format.fprintf oc "@[Unexpected infix@ \"%a\"@]" Terms.pp t
-    | Error (`UnexpectedPostfix t) ->
-        Format.fprintf oc "@[Unexpected postfix@ \"%a\"@]" Terms.pp t
     | Error `TooFewArguments -> Format.pp_print_string oc "Too few arguments"
     | Error (`OpConflict (t, u)) ->
         Format.fprintf oc "@[Operator conflict between@ \"%a\"@ and@ \"%a\"@]"
@@ -51,23 +47,17 @@ let rtterm :
 (** {1 Simple tests} These tests define the behaviour of the Pratt parser. *)
 
 let simple_infix () =
-  let is_op =
-    Terms.on_symb (function
-      | "+" -> Some (Pratter.(Infix Left), 1.0)
-      | _ -> None)
-  in
+  let ops = Pratter.(Operators.infix (symb_ "+") Left 1.0) in
   let x = symb "x" in
   let y = symb "y" in
   let not_parsed = Stream.of_list [ x; symb "+"; y ] in
   let parsed = return @@ add_args (symb "+") [ x; y ] in
-  Alcotest.check rtterm "x + y" (expr ~is_op not_parsed) parsed
+  Alcotest.check rtterm "x + y" (expr ~ops not_parsed) parsed
 
 let two_operators () =
-  let is_op =
-    Terms.on_symb (function
-      | "+" -> Some (Pratter.Infix Pratter.Left, 1.0)
-      | "*" -> Some (Pratter.Infix Pratter.Left, 1.1)
-      | _ -> None)
+  let ops =
+    Pratter.Operators.(
+      infix (symb_ "+") Left 1.0 <+> infix (symb_ "*") Left 1.1)
   in
   let x = symb "x" in
   let y = symb "y" in
@@ -79,33 +69,30 @@ let two_operators () =
     let right = add_args (symb "*") [ y; z ] in
     add_args (symb "+") [ x; right ]
   in
-  Alcotest.check rtterm "x + y * z" (expr ~is_op not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" parsed (expr ~ops not_parsed)
 
 let appl_opertor () =
-  let is_op =
-    Terms.on_symb (function "+" -> Some Pratter.(Infix Left, 1.0) | _ -> None)
-  in
+  let ops = Pratter.Operators.(infix (symb_ "+") Left 1.0) in
   let f = symb "f" in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ f; x; symb "+"; x ] in
   let parsed = return @@ add_args (symb "+") [ appl f x; x ] in
-  Alcotest.check rtterm "f x + x" (expr ~is_op not_parsed) parsed
+  Alcotest.check rtterm "f x + x" (expr ~ops not_parsed) parsed
 
-let factorial =
-  Terms.on_symb (function "!" -> Some (Pratter.Prefix, 1.0) | _ -> None)
+let ops = Pratter.Operators.(prefix (symb_ "!") 1.0)
 
 let simple_prefix () =
   let x = symb "x" in
   let not_parsed = Stream.of_list [ symb "!"; x ] in
   let parsed = return @@ appl (symb "!") x in
-  Alcotest.check rtterm "! x" (expr ~is_op:factorial not_parsed) parsed
+  Alcotest.check rtterm "! x" (expr ~ops not_parsed) parsed
 
 let prefix_appl () =
   let x = symb "x" in
   let f = symb "f" in
   let not_parsed = Stream.of_list [ symb "!"; f; x ] in
   let parsed = return @@ appl (symb "!") (appl f x) in
-  Alcotest.check rtterm "! f x" (expr ~is_op:factorial not_parsed) parsed
+  Alcotest.check rtterm "! f x" (expr ~ops not_parsed) parsed
 
 let prefix_appl_in () =
   let x = symb "x" in
@@ -118,24 +105,20 @@ let prefix_appl_in () =
     let inside = appl fac x in
     appl f inside
   in
-  Alcotest.check rtterm "f ! x = f (! x)"
-    (expr ~is_op:factorial not_parsed)
-    parsed
+  Alcotest.check rtterm "f ! x = f (! x)" (expr ~ops not_parsed) parsed
 
 let double_prefix () =
   (* !!x = !(!x) *)
   let not_parsed = Stream.of_list [ symb "!"; symb "!"; symb "x" ] in
   let parsed = return @@ appl (symb "!") (appl (symb "!") (symb "x")) in
-  Alcotest.check rtterm "!!x" (expr ~is_op:factorial not_parsed) parsed
+  Alcotest.check rtterm "!!x" (expr ~ops not_parsed) parsed
 
 let precedences_left_same () =
   (* x + y * z = (x + y) * z when bp(+) = bp( * ) and both are left
      associative *)
-  let is_op =
-    Terms.on_symb (function
-      | "+" -> Some Pratter.(Infix Left, 1.0)
-      | "*" -> Some Pratter.(Infix Left, 1.0)
-      | _ -> None)
+  let ops =
+    let open Pratter.Operators in
+    infix (symb_ "+") Left 1.0 <+> infix (symb_ "*") Left 1.0
   in
   let not_parsed =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
@@ -146,16 +129,14 @@ let precedences_left_same () =
     let left = add_args (symb "+") [ symb "x"; symb "y" ] in
     add_args (symb "*") [ left; symb "z" ]
   in
-  Alcotest.check rtterm "x + y * z" (expr ~is_op not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (expr ~ops not_parsed) parsed
 
 let precedences_right_same () =
   (* x + y * z = x + (y * z) when bp(+) = bp( * ) and both are right
      associative *)
-  let is_op =
-    Terms.on_symb (function
-      | "+" -> Some Pratter.(Infix Right, 1.0)
-      | "*" -> Some Pratter.(Infix Right, 1.0)
-      | _ -> None)
+  let ops =
+    let open Pratter.Operators in
+    infix (symb_ "+") Right 1.0 <+> infix (symb_ "*") Right 1.0
   in
   let not_parsed =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
@@ -166,16 +147,14 @@ let precedences_right_same () =
     let right = add_args (symb "*") [ symb "y"; symb "z" ] in
     add_args (symb "+") [ symb "x"; right ]
   in
-  Alcotest.check rtterm "x + y * z" (expr ~is_op not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (expr ~ops not_parsed) parsed
 
 let precedences_lt_not_assoc () =
   (* x + y * z = x + (y * z) when bp(+) < bp( * ) and both are not
      associative *)
-  let is_op =
-    Terms.on_symb (function
-      | "+" -> Some Pratter.(Infix Neither, 0.)
-      | "*" -> Some Pratter.(Infix Neither, 0.1)
-      | _ -> None)
+  let ops =
+    let open Pratter.Operators in
+    infix (symb_ "+") Neither 0.0 <+> infix (symb_ "*") Neither 0.1
   in
   let not_parsed =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
@@ -186,16 +165,14 @@ let precedences_lt_not_assoc () =
     let right = add_args (symb "*") [ symb "y"; symb "z" ] in
     add_args (symb "+") [ symb "x"; right ]
   in
-  Alcotest.check rtterm "x + y * z" (expr ~is_op not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (expr ~ops not_parsed) parsed
 
 let precedences_gt_not_assoc () =
   (* x + y * z = (x + y) * z when bp(+) > bp( * ) and both are not
      associative *)
-  let is_op =
-    Terms.on_symb (function
-      | "+" -> Some Pratter.(Infix Neither, -1.)
-      | "*" -> Some Pratter.(Infix Neither, -1.1)
-      | _ -> None)
+  let ops =
+    let open Pratter.Operators in
+    infix (symb_ "+") Neither (-1.) <+> infix (symb_ "*") Neither (-1.1)
     (* NOTE that negative binding powers are accepted. *)
   in
   let not_parsed =
@@ -207,126 +184,130 @@ let precedences_gt_not_assoc () =
     let left = add_args (symb "+") [ symb "x"; symb "y" ] in
     add_args (symb "*") [ left; symb "z" ]
   in
-  Alcotest.check rtterm "x + y * z" (expr ~is_op not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (expr ~ops not_parsed) parsed
 
 (** Postfix *)
 
 let postfix () =
-  let l = [ ("!", (Pratter.Postfix, 1.0)) ] in
+  let ops = Pratter.Operators.(postfix (symb_ "!") 1.0) in
   let raw = Stream.of_list [ symb "x"; symb "!" ] in
   let parsed = return @@ add_args (symb "!") [ symb "x" ] in
-  Alcotest.check rtterm "x ! = @(!, x)" parsed (expr_l l raw);
+  Alcotest.check rtterm "x ! = @(!, x)" parsed (expr ~ops raw);
   let raw = Stream.of_list [ symb "f"; symb "x"; symb "!" ] in
   let parsed =
     return @@ add_args (symb "!") [ add_args (symb "f") [ symb "x" ] ]
   in
-  Alcotest.check rtterm "f x ! = @(!, @(f, x))" parsed (expr_l l raw);
+  Alcotest.check rtterm "f x ! = @(!, @(f, x))" parsed (expr ~ops raw);
   let raw = Stream.of_list [ symb "x"; symb "!"; symb "!" ] in
   let parsed =
     return @@ add_args (symb "!") [ add_args (symb "!") [ symb "x" ] ]
   in
-  Alcotest.check rtterm "x ! ! = @(!, @(!, x))" parsed (expr_l l raw)
+  Alcotest.check rtterm "x ! ! = @(!, @(!, x))" parsed (expr ~ops raw)
 
 (** Mixes *)
 
 let mixing_una_bin () =
   (* -x + y = (-x) + y when bp(-) > bp(+) *)
-  let tbl = Pratter.[ ("+", (Infix Neither, 1.0)); ("-", (Prefix, 1.1)) ] in
+  let ops =
+    Pratter.Operators.(infix (symb_ "+") Neither 1.0 <+> prefix (symb_ "-") 1.1)
+  in
   let not_parsed = Stream.of_list [ symb "-"; symb "x"; symb "+"; symb "y" ] in
   let parsed =
     return @@ add_args (symb "+") [ add_args (symb "-") [ symb "x" ]; symb "y" ]
   in
-  Alcotest.check rtterm "(-x) + y" (expr_l tbl not_parsed) parsed
+  Alcotest.check rtterm "(-x) + y" (expr ~ops not_parsed) parsed
 
 let mixing_una_bin_bis () =
   (* !x + y = !(x + y) when bp(+) > bp(!) *)
-  let tbl =
-    Pratter.[ ("+", (Infix Neither, 1.0)); ("!", (Pratter.Prefix, 0.9)) ]
+  let ops =
+    Pratter.Operators.(infix (symb_ "+") Neither 1.0 <+> prefix (symb_ "!") 0.9)
   in
   let not_parsed = Stream.of_list [ symb "!"; symb "x"; symb "+"; symb "y" ] in
   let parsed =
     return @@ add_args (symb "!") [ add_args (symb "+") [ symb "x"; symb "y" ] ]
   in
-  Alcotest.check rtterm "!(x + y)" (expr_l tbl not_parsed) parsed
+  Alcotest.check rtterm "!(x + y)" (expr ~ops not_parsed) parsed
 
 let postfix_mixes_infix () =
-  let tbl =
-    Pratter.
-      [
-        ("!", (Postfix, 1.0)); ("+", (Infix Left, 0.9)); ("/", (Infix Left, 1.1))
-      ]
+  let ops =
+    let open Pratter.Operators in
+    postfix (symb_ "!") 1.0
+    <+> infix (symb_ "+") Left 0.9
+    <+> infix (symb_ "/") Left 1.1
   in
   let raw = Stream.of_list [ symb "x"; symb "!"; symb "+"; symb "y" ] in
   let parsed =
     return @@ add_args (symb "+") [ add_args (symb "!") [ symb "x" ]; symb "y" ]
   in
-  Alcotest.check rtterm "x ! + y = @(+, @(!, x), y)" (expr_l tbl raw) parsed;
+  Alcotest.check rtterm "x ! + y = @(+, @(!, x), y)" (expr ~ops raw) parsed;
   let raw = Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "!" ] in
   let parsed =
     return @@ add_args (symb "+") [ symb "x"; add_args (symb "!") [ symb "y" ] ]
   in
-  Alcotest.check rtterm "x + y ! = @(+, x, @(!, y))" (expr_l tbl raw) parsed
+  Alcotest.check rtterm "x + y ! = @(+, x, @(!, y))" (expr ~ops raw) parsed
 
 let postfix_mixes_prefix () =
-  let tbl =
-    Pratter.
-      [ ("!", (Postfix, 1.0)); ("-", (Prefix, 1.1)); ("+", (Prefix, 0.9)) ]
+  let ops =
+    let open Pratter.Operators in
+    postfix (symb_ "!") 1.0
+    <+> prefix (symb_ "-") 1.1
+    <+> prefix (symb_ "+") 0.9
   in
   let raw = Stream.of_list [ symb "-"; symb "x"; symb "!" ] in
   let parsed =
     return @@ add_args (symb "!") [ add_args (symb "-") [ symb "x" ] ]
   in
-  Alcotest.check rtterm "- x ! = @(!, @(-, x))" (expr_l tbl raw) parsed;
+  Alcotest.check rtterm "- x ! = @(!, @(-, x))" (expr ~ops raw) parsed;
   let raw = Stream.of_list [ symb "+"; symb "x"; symb "!" ] in
   let parsed =
     return @@ add_args (symb "+") [ add_args (symb "!") [ symb "x" ] ]
   in
-  Alcotest.check rtterm "+ x ! = @(+, @(!, x))" (expr_l tbl raw) parsed
+  Alcotest.check rtterm "+ x ! = @(+, @(!, x))" (expr ~ops raw) parsed
+
+let both_infix_prefix () =
+  let ops =
+    let open Pratter.Operators in
+    prefix (symb_ "-") 2.0 <+> infix (symb_ "-") Left 1.0
+  in
+  let raw = Stream.of_list [ symb "-"; symb "x"; symb "-"; symb "y" ] in
+  let parsed =
+    return @@ add_args (symb "-") [ add_args (symb "-") [ symb "x" ]; symb "y" ]
+  in
+  Alcotest.check rtterm "- x - y = @(@(-, @(-, x)), y)" parsed (expr ~ops raw)
 
 (** Errors *)
 
 let postfix_exn () =
-  let tbl = Pratter.[ ("!", (Postfix, 1.0)); ("-", (Prefix, 1.0)) ] in
-  let raw = Stream.of_list [ symb "!"; symb "x" ] in
-  Alcotest.check rtterm "! x" (expr_l tbl raw)
-    (error @@ `UnexpectedPostfix (symb "!"));
+  let ops =
+    Pratter.Operators.(postfix (symb_ "!") 1.0 <+> prefix (symb_ "-") 1.0)
+  in
   let raw = Stream.of_list [ symb "-"; symb "x"; symb "!" ] in
-  Alcotest.check rtterm "- x !" (expr_l tbl raw)
+  Alcotest.check rtterm "- x !"
     (error @@ `OpConflict (symb "x", symb "!"))
+    (expr ~ops raw)
 
 let precedences_eq_not_assoc () =
   (* x + y * z fails when bp(+) = bp( * ) and both are not associative *)
-  let tbl =
-    Pratter.[ ("+", (Infix Neither, 1.0)); ("*", (Infix Neither, 1.0)) ]
+  let ops =
+    Pratter.Operators.(
+      infix (symb_ "+") Neither 1.0 <+> infix (symb_ "*") Neither 1.0)
   in
   let not_parsed =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
   in
   Alcotest.check rtterm "x + y * z"
     (error @@ `OpConflict (symb "y", symb "*"))
-    (expr_l tbl not_parsed)
+    (expr ~ops not_parsed)
 
 let partial () =
-  let tbl = Pratter.[ ("+", (Infix Left, 1.0)); ("!", (Prefix, 1.0)) ] in
+  let ops =
+    Pratter.Operators.(infix (symb_ "+") Left 1.0 <+> prefix (symb_ "!") 1.0)
+  in
   let not_parsed = Stream.of_list [ symb "x"; symb "+" ] in
-  Alcotest.check rtterm "x +" (expr_l tbl not_parsed) (error `TooFewArguments);
+  Alcotest.check rtterm "x +" (expr ~ops not_parsed) (error `TooFewArguments);
   Alcotest.check rtterm "!"
-    (expr_l tbl (Stream.of_list [ symb "!" ]))
+    (expr ~ops (Stream.of_list [ symb "!" ]))
     (error `TooFewArguments)
-
-let bin_start_expr () =
-  (* [+ x x] raises [UnexpectInfix +]: [+] has no left context. *)
-  let tbl = Pratter.[ ("+", (Infix Neither, 1.0)) ] in
-  let not_parsed = Stream.of_list [ symb "+"; symb "x"; symb "x" ] in
-  Alcotest.check rtterm "+ x x" (expr_l tbl not_parsed)
-    (error @@ `UnexpectedInfix (symb "+"))
-
-let bin_bin () =
-  (* x + + x raises [UnexpectInfix +]: the second [+] has no left context. *)
-  let tbl = Pratter.[ ("+", (Infix Neither, 1.0)) ] in
-  let not_parsed = Stream.of_list [ symb "x"; symb "+"; symb "+"; symb "x" ] in
-  Alcotest.check rtterm "x + + x" (expr_l tbl not_parsed)
-    (error @@ `UnexpectedInfix (symb "+"))
 
 (** {1 Property-based tests with [QCheck]} *)
 
@@ -353,14 +334,16 @@ let term_list =
   let size = QCheck.Gen.(2 -- 100) in
   QCheck.(make ~print Gen.(list_size size term_gen))
 
-let is_op =
-  Terms.on_symb (function
-    | "+" -> Some Pratter.(Infix Left, 1.1)
-    | "*" -> Some Pratter.(Infix Right, 1.5)
-    | "=" -> Some Pratter.(Infix Neither, 0.5)
-    | "!" -> Some (Pratter.Postfix, 1.0)
-    | "-" -> Some (Pratter.Prefix, 0.9)
-    | _ -> None)
+let ops =
+  let open Pratter.Operators in
+  cat
+    [
+      infix (symb_ "+") Left 1.1
+    ; infix (symb_ "*") Right 1.5
+    ; infix (symb_ "=") Neither 0.5
+    ; postfix (symb_ "!") 1.0
+    ; prefix (symb_ "-") 0.9
+    ]
 
 (** Parsing does not change the number of leaf nodes of a term. *)
 let constant_leaf_amount =
@@ -369,7 +352,7 @@ let constant_leaf_amount =
     Test.make ~name:"parsing_constant_leaf_amount" ~count:100 term_list
       (fun l ->
         assume (l <> []);
-        match expr ~is_op (Stream.of_list l) with
+        match expr ~ops (Stream.of_list l) with
         | Ok t ->
             Terms.count_symb t
             = List.fold_right (fun t -> ( + ) (Terms.count_symb t)) l 0
@@ -381,7 +364,7 @@ let greater_depth_parsed =
   QCheck.(
     Test.make ~name:"more_depth_in_parsed_exp" ~count:100 term_list (fun l ->
         assume (l <> []);
-        match expr ~is_op (Stream.of_list l) with
+        match expr ~ops (Stream.of_list l) with
         | Ok t -> Terms.depth t > List.(map Terms.depth l |> fold_left max 0)
         | Error _ -> true))
 
@@ -394,7 +377,7 @@ let empty_table_id =
       let sequential_application =
         return @@ List.(fold_left appl (hd l) (tl l))
       in
-      let parsed = expr ~is_op:(Fun.const None) (Stream.of_list l) in
+      let parsed = expr ~ops:Pratter.Operators.none (Stream.of_list l) in
       RTTerm.equal sequential_application parsed)
 
 (** {2 Compare against a YACC parser}*)
@@ -423,7 +406,7 @@ let str_of_slist sl =
 let compare_yacc =
   QCheck.(
     Test.make ~name:"compare_yacc" ~count:1000 slist (fun l ->
-        let res = expr ~is_op (Stream.of_list l) in
+        let res = expr ~ops (Stream.of_list l) in
         let expr = yacc_parse (str_of_slist l) in
         assume (Result.is_ok res && expr <> None);
         Option.get expr = Result.get_ok res))
@@ -438,8 +421,7 @@ let _ =
   let open Alcotest in
   run "Simple terms"
     [
-      ("properties", qsuite)
-    ; ( "infix"
+      ( "infix"
       , [
           test_case "simple" `Quick simple_infix
         ; test_case "two" `Quick two_operators
@@ -469,10 +451,8 @@ let _ =
           test_case "prefix infix" `Quick mixing_una_bin
         ; test_case "infix prefix" `Quick mixing_una_bin_bis
         ] )
-    ; ( "errors"
-      , [
-          test_case "partial infix/prefix" `Quick partial
-        ; test_case "infix no left" `Quick bin_start_expr
-        ; test_case "infix successive" `Quick bin_bin
-        ] )
+    ; ( "context dependent"
+      , [ test_case "prefix infix" `Quick both_infix_prefix ] )
+    ; ("errors", [ test_case "partial infix/prefix" `Quick partial ])
+    ; ("properties", qsuite)
     ]

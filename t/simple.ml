@@ -10,28 +10,23 @@
 (* We start by defining the terms *)
 type term = Appl of term * term | Symb of string
 
-(* along with a function that says which tokens are operators, and for which
-   operator, whether they're infix, prefix or postfix and what's their
-   precedence.. *)
-let is_op : term -> (Pratter.fixity * float) option = function
-  | Symb "-" ->
-      Some Pratter.(Prefix, 1.0) (* Unary prefix minus with precedence 1 *)
-  | Symb "+" ->
-      Some Pratter.(Infix Left, 0.5)
-      (* Infix plus, associative to the left so that [3 + 5 + 2] is parsed
-         [(3 + 5) + 2]. *)
-  | Symb "*" ->
-      Some Pratter.(Infix Left, 0.6)
-      (* Infix times, with a higher precedence than [+], so that [3 + 5 * 2] is
-         parsed [3 + (5 * 2)]. *)
-  | Symb "!" -> Some Pratter.(Postfix, 1.0) (* Postfix factorial *)
-  | _ -> None
+(* then we declare some operators: for each operator, we declare whether
+   they're infix, prefix or postfix and what's their precedence *)
+let ops =
+  let open Pratter.Operators in
+  prefix (function Symb "-" as s -> Some s | _ -> None) 1.0
+  <+> infix (function Symb "+" as s -> Some s | _ -> None) Left 0.5
+  <+> infix (function Symb "*" as s -> Some s | _ -> None) Left 0.6
+  <+> postfix (function Symb "!" as s -> Some s | _ -> None) 1.0
+
+let appl x y = Appl (x, y)
+let token x = x
 
 (* And that's it! The function [arith] below is able to parse arithmetic
    expressions *)
 
 let arith : term Stream.t -> (term, _) result =
-  Pratter.expression ~appl:(fun x y -> Appl (x, y)) ~is_op
+  Pratter.expression ~token ~appl ~ops
 
 let () =
   (* Let's try it, we'll parse the input [(x !) + (y * (-z))] represented as a
@@ -40,7 +35,10 @@ let () =
     [ "x"; "!"; "+"; "y"; "*"; "-"; "z" ] |> List.map (fun x -> Symb x)
     (* The [map] injects strings into the [term] type *)
   in
-  (* and compare it to the following output: *)
+  (* and compare it to the following output, which is the same expression where
+     the application is binary, prefix and explicit, for instance [- x] is
+     written [Appl "-" x] (you might want to write it properly using a pen and
+     a paper to convince yourself): *)
   let output : term =
     Appl
       ( Appl (Symb "+", Appl (Symb "!", Symb "x"))
