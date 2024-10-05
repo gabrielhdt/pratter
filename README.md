@@ -24,21 +24,23 @@ Then, at the root of the source tree,
 $ make install
 ```
 
-You can try the library in the toplevel: the following code defines a parser
-for the language made of strings interspersed with infix `+` operators:
+To ensure it's working write the following code in some file `plus.ml`
 ```ocaml
-# #require "pratter";;
-# type t = A of t * t | S of string;;
 type t = A of t * t | S of string
-# let appl t u = A (t, u);;
-val appl : t -> t -> t = <fun>
-# let token = Fun.id;;
-val token : 'a -> 'a = <fun>
-# let ops = Pratter.Operators.(infix (function S "+" as s -> Some s | _ -> None) Left 0.3);;
-val ops: (t, t) Pratter.Operators.t = <abstr>
-# Pratter.expression ~token ~appl ~ops (Stream.of_list [ S "x"; S "+"; S "y"]);;
-- : (t, t Pratter.error) result = Ok (A (A (S "+", S "x"), S "y"))
+let appl t u = A (t, u)
+let token = Fun.id
+let ops =
+  Pratter.Operators.(infix (function S "+" as s -> Some s | _ -> None) Left 0.3)
+let parse = Pratter.expression ~token ~appl ~ops
+let () =
+  let input = List.to_seq [ S "x"; S "+"; S "y"] in
+  assert (Result.is_ok @@ Pratter.run parse input)
 ```
+then compile it using `$ ocamlfind ocamlc -package pratter -linkpkg plus.ml`.
+Executing `$ ./a.out` should return 0.
+
+The aforementioned code defines a parser for the language made of strings
+interspersed with infix `+` operators
 
 ## What next?
 
