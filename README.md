@@ -29,15 +29,20 @@ To ensure it's working write the following code in some file `plus.ml`
 type t = A of t * t | S of string
 let appl t u = A (t, u)
 let token = Fun.id
-let ops =
-  Pratter.Operators.(infix (function S "+" as s -> Some s | _ -> None) Left 0.3)
+let ops = function
+  | S "+" as s -> Pratter.[ Infix Left, 0.3, s ]
+  | _ -> []
 let parse = Pratter.expression ~token ~appl ~ops
 let () =
   let input = List.to_seq [ S "x"; S "+"; S "y"] in
   assert (Result.is_ok @@ Pratter.run parse input)
 ```
-then compile it using `$ ocamlfind ocamlc -package pratter -linkpkg plus.ml`.
-Executing `$ ./a.out` should return 0.
+then execute the following lines which should return 0
+```command
+$ echo "module Pratter = struct $(cat pratter.ml) end $(cat plus.ml)" > plus_.ml
+$ ocamlc plus_.ml
+$ ./a.out
+```
 
 The aforementioned code defines a parser for the language made of strings
 interspersed with infix `+` operators

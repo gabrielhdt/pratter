@@ -31,6 +31,12 @@ type associativity =
       (** If [+] is not associative, then [(x + y) + z] is not [x + (y + z)] and
           [x + y + z] results in a syntax error. *)
 
+(** The fixity of an operator *)
+type fixity =
+  | Infix of associativity  (** Infix operator like [+] in [x + y]. *)
+  | Prefix  (** Prefix operator like [!] in [! x]. *)
+  | Postfix  (** Postfix operator like [^] in [x ^]. *)
+
 type 't error =
   [ `Op_conflict of 't
     (** Priority or associativiy conflict between two operators.
@@ -45,48 +51,6 @@ type 't error =
 type ('a, 'b) result = ('a, 'b error) Stdlib.result
 (** A specialised error type. *)
 
-module Operators : sig
-  type ('a, 'b) t
-  (** The elements of that type drive the parser telling it which input tokens
-      are operators. *)
-
-  val none : _ t
-  (** Tell the parser there's no operator. *)
-
-  val infix : ('a -> 'b option) -> associativity -> float -> ('a, 'b) t
-  (** [infix is a pr] tells the parser that for any input [i], if [is i] is
-      true, then it's an infix operator with associativity [a] and precedence
-      [pr].
-
-      For example, use [infix = Neither 10.] to consider the equality [=] as
-      infix with no associativity so that you can parse [x = y]. *)
-
-  val prefix : ('a -> 'b option) -> float -> ('a, 'b) t
-  (** [prefix is pr] tells the parser that for any input [i], if [is i] is true,
-      then it's a prefix operator with precedence [pr].
-
-      For example, use [prefix ¬ 1.] to consider the negation [¬] as a prefix
-      operator so that you can parse [¬ x]. *)
-
-  val postfix : ('a -> 'b option) -> float -> ('a, 'b) t
-  (** [postfix is pr] tells the parser that for any input [i], if [is i] is true,
-      then it's a postfix operator with precedence [pr].
-
-      For example, use [postfix ! 1.] to consider the factorial [!] as a postfix
-      operator so that you can parse [x !]. *)
-
-  val ( <+> ) : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) t
-  (** [o <+> p] tells the parser to consider the operators specified in [o] and
-      in [p]. *)
-
-  (** Note that through {!none} and {!(<+>)}, the type ['a t] is a {b semi-group}.
-      You can use {!infix}, {!prefix} and {!postfix} to generate initial values
-      and combine them with {!(<+>)}. *)
-
-  val cat : ('a, 'b) t list -> ('a, 'b) t
-  (** Concatenate a list of operator specifications using [<+>]. *)
-end
-
 type ('tok, 'out) parser
 (** Values of that type are parsers from sequences of ['tok] to values of type
     ['out]. *)
@@ -94,12 +58,14 @@ type ('tok, 'out) parser
 val expression :
      appl:('b -> 'b -> 'b)
   -> token:('a -> 'b)
-  -> ops:('a, 'b) Operators.t
+  -> ops:('a -> (fixity * float * 'b) list)
   -> ('a, 'b) parser
 (** [expression appl token ops] is a parser from sequences of ['a] to
     structured values of type ['b]. The parser is driven by the operator parser
-    [ops] which determines which tokens are operators. Tokens that aren't
-    operators are parsed using the [token] function.
+    [ops] which determines which tokens are operators. A token [t]
+    can be used as an operator if [ops t] isn't empty. Each value [(f, p, s)]
+    of [ops t] means that token [t] can be parsed as token [s] with fixity
+    [f] and priority [p].
 
     If tokens are seen as leaves of binary trees, the function [appl] is the
     concatenation of two binary trees. If tokens are seen as terms, [appl]
