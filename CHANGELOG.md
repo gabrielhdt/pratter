@@ -4,6 +4,24 @@ Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
 
+## [5.0] -- 2025-02-11
+
+### Changed
+
+🧨 The Signature of `expression` has changed from
+```ocaml
+appl:('b -> 'b -> 'b) -> token:('a -> 'b)
+-> ops:(('a, 'b) Operators.t)
+-> ('a, 'b) parser
+```
+to
+```ocaml
+appl:('b -> 'b -> 'b) -> token:('a -> 'b)
+-> ops:('a -> (fixity * float * 'b) list)
+-> ('a, 'b) parser
+```
+and the `Operators` module has been deleted.
+
 ## [4.0] -- 2024-10-08
 
 ### Changed
