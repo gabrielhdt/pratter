@@ -38,8 +38,8 @@ let () =
   in
   (* and compare it to the following output, which is the same expression where
      the application is binary, prefix and explicit, for instance [- x] is
-     written [Appl "-" x] (you might want to write it properly using a pen and
-     a paper to convince yourself): *)
+     written [Appl ("-", x)] (you might want to write it properly using
+     a pen and a paper to convince yourself): *)
   let output : term =
     Appl
       ( Appl (Symb "+", Appl (Symb "!", Symb "x"))
