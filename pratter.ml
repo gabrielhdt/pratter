@@ -28,9 +28,9 @@ let push (x : 'i) : ('i, unit) parser = fun inp -> Ok ((), Seq.cons x inp)
 (** Parse a single token if there is one. *)
 let tok : ('tok, 'tok option) parser =
  fun inp ->
-  match Seq.uncons inp with
-  | None -> Ok (None, Seq.empty)
-  | Some (t, rest) -> Ok (Some t, rest)
+  match inp () with
+  | Seq.Nil -> Ok (None, Seq.empty)
+  | Seq.Cons (t, rest) -> Ok (Some t, rest)
 
 let ( let* ) = bind
 
