@@ -22,12 +22,19 @@ let fmap (f : 'a -> 'b) (p : ('tok, 'a) parser) : ('tok, 'b) parser =
  fun inp -> Result.map (fun (x, y) -> (f x, y)) (p inp)
 
 let fail (e : 'i error) : ('i, _) parser = fun _ -> Error e
-let push (x : 'i) : ('i, unit) parser = fun inp -> Ok ((), Seq.cons x inp)
+
 (* Put back a token in the stream of input. *)
+let push (x : 'i) : ('i, unit) parser =
+ fun inp ->
+  Ok
+    ( ()
+    , (* This expression becomes [Seq.cons] in ocaml 4.11 *)
+      fun () -> Seq.Cons (x, inp) )
 
 (** Parse a single token if there is one. *)
 let tok : ('tok, 'tok option) parser =
  fun inp ->
+  (* Can be replaced by [Seq.uncons] from ocaml 4.14 *)
   match inp () with
   | Seq.Nil -> Ok (None, Seq.empty)
   | Seq.Cons (t, rest) -> Ok (Some t, rest)
