@@ -1,0 +1,22 @@
+image: ocaml/opam2
+
+stages:
+  - test
+
+test:
+  stage: test
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - _opam
+  script:
+    - sudo apt install -y m4
+    - opam repository set-url default https://opam.ocaml.org
+    - opam update
+    - opam switch $OCAML_VERSION
+    - opam install --deps-only -t -y .
+    - eval $(opam env)
+    - dune runtest
+  parallel:
+    matrix:
+      - OCAML_VERSION: ["4.02", "4.04", "4.06", "4.07", "4.08", "4.09", "4.10"]
