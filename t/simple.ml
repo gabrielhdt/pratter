@@ -10,34 +10,21 @@
 (* We start by defining the terms *)
 type term = Appl of term * term | Symb of string
 
-(* along with a function that says which tokens are operators. For this, we
-   define a data structure that holds our operators. *)
-
-type table = {
-    prefix : (string * float) list
-  ; infix : (string * (float * Pratter.associativity)) list
-  ; postfix : (string * float) list
-}
-
-(* We instantiate the data structure for our case. *)
-let tbl =
-  {
-    prefix = [ ("-", 1.0) ]
-  ; infix = [ ("+", (0.5, Pratter.Left)); ("*", (0.6, Pratter.Left)) ]
-  ; postfix = [ ("!", 1.0) ]
-  }
-
-(* and we define the aforementioned function. *)
+(* along with a function that says which tokens are operators, and for which
+   operator, whether they're infix, prefix or postfix and what's their
+   precedence.. *)
 let is_op : term -> (Pratter.fixity * float) option = function
-  | Symb id -> (
-      try Some (Pratter.Prefix, List.assoc id tbl.prefix)
-      with Not_found -> (
-        try
-          let bp, assoc = List.assoc id tbl.infix in
-          Some (Pratter.Infix assoc, bp)
-        with Not_found -> (
-          try Some (Pratter.Postfix, List.assoc id tbl.postfix)
-          with Not_found -> None)))
+  | Symb "-" ->
+      Some Pratter.(Prefix, 1.0) (* Unary prefix minus with precedence 1 *)
+  | Symb "+" ->
+      Some Pratter.(Infix Left, 0.5)
+      (* Infix plus, associative to the left so that [3 + 5 + 2] is parsed
+         [(3 + 5) + 2]. *)
+  | Symb "*" ->
+      Some Pratter.(Infix Left, 0.6)
+      (* Infix times, with a higher precedence than [+], so that [3 + 5 * 2] is
+         parsed [3 + (5 * 2)]. *)
+  | Symb "!" -> Some Pratter.(Postfix, 1.0) (* Postfix factorial *)
   | _ -> None
 
 (* And that's it! The function [arith] below is able to parse arithmetic
@@ -50,7 +37,8 @@ let () =
   (* Let's try it, we'll parse the input [(x !) + (y * (-z))] represented as a
      flat stream of tokens *)
   let input : term list =
-    [ Symb "x"; Symb "!"; Symb "+"; Symb "y"; Symb "*"; Symb "-"; Symb "z" ]
+    [ "x"; "!"; "+"; "y"; "*"; "-"; "z" ] |> List.map (fun x -> Symb x)
+    (* The [map] injects strings into the [term] type *)
   in
   (* and compare it to the following output: *)
   let output : term =
