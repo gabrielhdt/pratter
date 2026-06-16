@@ -12,12 +12,13 @@ type term = Appl of term * term | Symb of string
 
 (* then we declare some operators: for each operator, we declare whether
    they're infix, prefix or postfix and what's their precedence *)
-let ops =
-  let open Pratter.Operators in
-  prefix (function Symb "-" as s -> Some s | _ -> None) 1.0
-  <+> infix (function Symb "+" as s -> Some s | _ -> None) Left 0.5
-  <+> infix (function Symb "*" as s -> Some s | _ -> None) Left 0.6
-  <+> postfix (function Symb "!" as s -> Some s | _ -> None) 1.0
+let ops (t : term) : (Pratter.fixity * float * term) list =
+  match t with
+  | Symb "-" -> [ (Prefix, 1.0, t) ]
+  | Symb "+" -> [ (Infix Left, 0.5, t) ]
+  | Symb "*" -> [ (Infix Left, 0.6, t) ]
+  | Symb "!" -> [ (Postfix, 1.0, t) ]
+  | _ -> []
 
 let appl x y = Appl (x, y)
 let token x = x

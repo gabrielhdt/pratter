@@ -1,47 +1,13 @@
 (* Copyright (C) Gabriel Hondet.
    Subject to the BSD-3-Clause license *)
 
+let or_else (x : 'a option) (f : unit -> 'a) : 'a =
+  match x with Some x -> x | None -> f ()
+
 type associativity = Left | Right | Neither
+type fixity = Infix of associativity | Prefix | Postfix
 type 't error = [ `Op_conflict of 't | `Too_few_arguments ]
 type ('a, 'b) result = ('a, 'b error) Stdlib.result
-
-let ( >> ) f g x = g (f x)
-
-module Operators = struct
-  type ('a, 'b) t = {
-      prefix : 'a -> (float * 'b) option
-    ; postfix : 'a -> (float * 'b) option
-    ; infix : 'a -> (associativity * float * 'b) option
-  }
-
-  let none =
-    {
-      prefix = (fun _ -> None)
-    ; postfix = (fun _ -> None)
-    ; infix = (fun _ -> None)
-    }
-
-  let infix (parse : 'a -> 'b option) (a : associativity) (prio : float) :
-      ('a, 'b) t =
-    { none with infix = parse >> Option.map (fun p -> (a, prio, p)) }
-
-  let postfix (parse : 'a -> 'b option) (prio : float) : ('a, 'b) t =
-    { none with postfix = parse >> Option.map (fun p -> (prio, p)) }
-
-  let prefix (parse : 'a -> 'b option) (prio : float) : ('a, 'b) t =
-    { none with prefix = parse >> Option.map (fun p -> (prio, p)) }
-
-  let ( <+> ) (o1 : ('a, 'b) t) (o2 : ('a, 'b) t) : ('a, 'b) t =
-    let f is x = Option.(fold ~some ~none:(is o2 x) (is o1 x)) in
-    {
-      prefix = f (fun o -> o.prefix)
-    ; postfix = f (fun o -> o.postfix)
-    ; infix = f (fun o -> o.infix)
-    }
-
-  let cat (ops : ('a, 'b) t list) : ('a, 'b) t =
-    List.fold_right ( <+> ) ops none
-end
 
 type ('tok, 'a) parser = 'tok Seq.t -> ('a * 'tok Seq.t, 'tok) result
 (** Parses ['tok] to ['a]. *)
@@ -71,19 +37,37 @@ let ( let* ) = bind
 let run (p : ('i, 'o) parser) (inp : _ Seq.t) : ('o, _) result =
   Result.map fst (p inp)
 
+let on_prefix (f : float -> 'a -> 'b) : fixity * float * 'a -> 'b option =
+  function
+  | Prefix, prio, s -> Some (f prio s)
+  | (Postfix | Infix _), _, _ -> None
+
+let on_postfix (f : float -> 'a -> 'b) : fixity * float * 'a -> 'b option =
+  function
+  | Postfix, prio, s -> Some (f prio s)
+  | (Prefix | Infix _), _, _ -> None
+
+let on_infix (f : associativity -> float -> 'a -> 'b) :
+    fixity * float * 'a -> 'b option = function
+  | Infix assoc, prio, s -> Some (f assoc prio s)
+  | (Postfix | Prefix), _, _ -> None
+
 let expression (type a b) ~(appl : b -> b -> b) ~(token : a -> b)
-    ~(ops : (a, b) Operators.t) : (a, b) parser =
+    ~(ops : a -> (fixity * float * b) list) : (a, b) parser =
   (* [nud tbl strm t] (for null denotation) is the production of term [t] with
      {b no} left context. If [t] is not a prefix operator, [nud] is the
      identity. Otherwise, the output is a production rule. *)
   let rec nud (t : a) : (a, b) parser =
-    match ops.prefix t with
-    | Some (rbp, t') -> fmap (appl t') (expression ~rbp ~rassoc:Neither)
-    | None -> pure (token t)
+    or_else
+      (List.find_map
+         (on_prefix (fun rbp t' ->
+              fmap (appl t') (expression ~rbp ~rassoc:Neither)))
+         (ops t))
+    @@ fun () -> pure (token t)
   (* [led ~strm ~left t assoc bp] is the production of term [t] with
-     left context [left]. We have the invariant that [t] is a binary operator
-     with associativity [assoc] and binding power [bp]. This invariant is
-     ensured while called in {!val:expression}. *)
+      left context [left]. We have the invariant that [t] is a binary operator
+      with associativity [assoc] and binding power [bp]. This invariant is
+      ensured while called in {!val:expression}. *)
   and led ~left t rassoc bp : (a, b) parser =
     let rbp =
       match rassoc with
@@ -101,30 +85,31 @@ let expression (type a b) ~(appl : b -> b -> b) ~(token : a -> b)
       let* next = tok in
       match next with
       | None -> pure left
-      | Some pt -> (
-          match ops.infix pt with
-          | Some (lassoc, lbp, next) ->
-              if lbp > rbp || (lbp = rbp && lassoc = Right && rassoc = Right)
-              then
-                let* t = led ~left next lassoc lbp in
-                aux t
-              else if lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
-              then
-                (* Put back *)
-                let* () = push pt in
-                pure left
-              else fail (`Op_conflict pt)
-          | None -> (
-              match ops.postfix pt with
-              | Some (lbp, next) ->
-                  if lbp > rbp then aux (appl next left)
-                  else if lbp = rbp then fail (`Op_conflict pt)
-                  else
-                    let* () = push pt in
-                    pure left
-              | None ->
-                  let* right = nud pt in
-                  aux (appl left right)))
+      | Some pt ->
+          let ops = ops pt in
+          (* Process the infix case *)
+          let ifx lassoc lbp next =
+            if lbp > rbp || (lbp = rbp && lassoc = Right && rassoc = Right) then
+              let* t = led ~left next lassoc lbp in
+              aux t
+            else if lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
+            then
+              (* Put back *)
+              let* () = push pt in
+              pure left
+            else fail (`Op_conflict pt)
+          in
+          let postfix lbp next =
+            if lbp > rbp then aux (appl next left)
+            else if lbp = rbp then fail (`Op_conflict pt)
+            else
+              let* () = push pt in
+              pure left
+          in
+          or_else (List.find_map (on_infix ifx) ops) @@ fun () ->
+          or_else (List.find_map (on_postfix postfix) ops) @@ fun () ->
+          let* right = nud pt in
+          aux (appl left right)
     in
     let* next = tok in
     match next with
