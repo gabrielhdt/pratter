@@ -20,8 +20,8 @@ type associativity =
           [x + y + z] results in a syntax error. *)
 
 type priority = float
-(** Priority of operators. If [*] has a higher priority than [+], than [x + y *
-    z] is parsed [x + (y * z)]. *)
+(** Priority of operators, also called binding power. If [*] has a higher
+    priority than [+], than [x + y * z] is parsed [x + (y * z)]. *)
 
 (** A type to designate operators and their properties. *)
 type operator =
@@ -162,5 +162,5 @@ functor
       with Stream.Failure -> raise TooFewArguments
 
     let expression : table -> Sup.term Stream.t -> Sup.term =
-     fun tbl strm -> expression ~tbl ~rbp:neg_infinity ~rassoc:Neither strm
+     fun tbl -> expression ~tbl ~rbp:neg_infinity ~rassoc:Neither
   end
