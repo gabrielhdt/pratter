@@ -1,0 +1,3 @@
+.merlin
+*.opam
+_build/
