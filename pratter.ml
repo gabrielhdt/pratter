@@ -1,22 +1,6 @@
 (* Copyright (C) Gabriel Hondet.
    Subject to the BSD-3-Clause license *)
 
-(** Transform strings of tokens and mixfix operators into full binary trees.
-    Operators are characterised by their associativity and their fixity.
-
-    To parse expressions of type ['a], you need to tell the parser
-    - how to concatenate two expressions with a function of type
-      ['a -> 'a -> 'a]; this function can be seen as the concatenation of two
-      binary trees (and in that case, the input of the parser is a string of
-      leaves);
-    - how to determine whether a value of ['a] should be considered as an
-      operator.
-
-    The algorithm implemented is an extension of the Pratt parser. The Shunting
-    Yard algorithm could also be used.
-    @see <https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html>
-    @see <https://dev.to/jrop/pratt-parsing> *)
-
 (** Associativity of an operator. *)
 type associativity =
   | Left
@@ -41,17 +25,45 @@ type 't error =
     (** Priority or associativiy conflict between two operators.
         In [`OpConflict (t,o)], [o] is an operator which generates a conflict
         preventing term [t] to be parsed. *)
-  | `UnexpectedInfix of 't
-    (** An infix operator appears without left context. If [+] is an
-        infix operator, it is raised in, e.g., [+ x x] or [x + + x x]. *)
-  | `UnexpectedPostfix of 't
-    (** A postfix operator appears without left context. If [!] is a
-        postfix operator, it is raised in [! x]. *)
   | `TooFewArguments
     (** More arguments are expected. It is raised for instance on
         partial application of operators, such as [x +]. *)
   ]
 (** Errors that can be encountered while parsing a stream of terms. *)
+
+module Operators = struct
+  type 'a t = {
+      is_prefix : 'a -> float option
+    ; is_postfix : 'a -> float option
+    ; is_infix : 'a -> (associativity * float) option
+  }
+
+  let none =
+    {
+      is_prefix = (fun _ -> None)
+    ; is_postfix = (fun _ -> None)
+    ; is_infix = (fun _ -> None)
+    }
+
+  let infix (is_op : 'a -> bool) (a : associativity) (prio : float) : 'a t =
+    { none with is_infix = (fun t -> if is_op t then Some (a, prio) else None) }
+
+  let postfix (is_op : 'a -> bool) (prio : float) : 'a t =
+    { none with is_postfix = (fun t -> if is_op t then Some prio else None) }
+
+  let prefix (is_op : 'a -> bool) (prio : float) : 'a t =
+    { none with is_prefix = (fun t -> if is_op t then Some prio else None) }
+
+  let ( <+> ) (o1 : 'a t) (o2 : 'a t) : 'a t =
+    let f is x = Option.(fold ~some ~none:(is o2 x) (is o1 x)) in
+    {
+      is_prefix = f (fun o -> o.is_prefix)
+    ; is_postfix = f (fun o -> o.is_postfix)
+    ; is_infix = f (fun o -> o.is_infix)
+    }
+
+  let cat (ops : 'a t list) : 'a t = List.fold_right ( <+> ) ops none
+end
 
 (** [expression appl is_op s] parses the stream of tokens [s] and turns it into
     a full binary tree.
@@ -71,22 +83,17 @@ type 't error =
     nodes. *)
 let expression :
        appl:('a -> 'a -> 'a)
-    -> is_op:('a -> (fixity * float) option)
+    -> ops:'a Operators.t
     -> 'a Stream.t
     -> ('a, 'a error) result =
- fun ~appl ~is_op ->
-  (* [nud tbl strm t] is the production of term [t] with {b no} left context.
-     If [t] is not a prefix operator, [nud] is the identity. Otherwise, the
-     output is a production rule. *)
+ fun ~appl ~ops ->
+  (* [nud tbl strm t] (for null denotation) is the production of term [t] with
+     {b no} left context. If [t] is not a prefix operator, [nud] is the
+     identity. Otherwise, the output is a production rule. *)
   let rec nud strm t =
-    match is_op t with
-    | Some (Prefix, rbp) ->
-        Result.map (appl t) (expression ~rbp ~rassoc:Neither strm)
-    | Some (Infix _, _) -> Error (`UnexpectedInfix t)
-    (* If the line above is erased, [+ x x] is parsed as [(+ x) x], and
-       [x + + x x] as [(+ x) ((+ x) x)]. *)
-    | Some (Postfix, _) -> Error (`UnexpectedPostfix t)
-    | _ -> Ok t
+    match ops.is_prefix t with
+    | Some rbp -> Result.map (appl t) (expression ~rbp ~rassoc:Neither strm)
+    | None -> Ok t
   (* [led ~strm ~left t assoc bp] is the production of term [t] with
      left context [left]. We have the invariant that [t] is a binary operator
      with associativity [assoc] and binding power [bp]. This invariant is
@@ -108,8 +115,8 @@ let expression :
       match Stream.peek strm with
       | None -> Ok left
       | Some pt -> (
-          match is_op pt with
-          | Some (Infix lassoc, lbp) ->
+          match ops.is_infix pt with
+          | Some (lassoc, lbp) ->
               if lbp > rbp || (lbp = rbp && lassoc = Right && rassoc = Right)
               then
                 (* Performed before to execute side effect on stream. *)
@@ -118,16 +125,19 @@ let expression :
               else if lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
               then Ok left
               else Error (`OpConflict (left, pt))
-          | Some (Postfix, lbp) ->
-              if lbp > rbp then
-                let next = Stream.next strm in
-                aux (appl next left)
-              else if lbp = rbp then Error (`OpConflict (left, pt))
-              else Ok left
-          | Some (Prefix, _) | None ->
-              (* argument of an application *)
-              let next = Stream.next strm in
-              Result.bind (nud strm next) (fun right -> aux (appl left right)))
+          | None -> (
+              match ops.is_postfix pt with
+              | Some lbp ->
+                  if lbp > rbp then
+                    let next = Stream.next strm in
+                    aux (appl next left)
+                  else if lbp = rbp then Error (`OpConflict (left, pt))
+                  else Ok left
+              | None ->
+                  (* argument of an application *)
+                  let next = Stream.next strm in
+                  Result.bind (nud strm next) (fun right ->
+                      aux (appl left right))))
     in
     try
       let next = Stream.next strm in
