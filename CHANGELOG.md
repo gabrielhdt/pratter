@@ -5,6 +5,10 @@ Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
 
+## [5.0.1] -- 2025-02-27
+
+Internal edits to reduce the minimal supported ocaml version to 4.10.0.
+
 ## [5.0] -- 2025-02-12
 
 ### Changed
