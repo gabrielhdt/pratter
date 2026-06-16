@@ -4,13 +4,15 @@
 (** Transform strings of tokens and mixfix operators into full binary trees.
     Operators are characterised by their associativity and their fixity.
 
-    To parse expressions of type ['a], you need to tell the parser
+    To parse expressions from type ['i] to type ['o], you need to tell the
+    parser
     - how to concatenate two expressions with a function of type
-      ['a -> 'a -> 'a]; this function can be seen as the concatenation of two
+      ['o -> 'o -> 'o]; this function can be seen as the concatenation of two
       binary trees (and in that case, the input of the parser is a string of
       leaves);
-    - how to determine whether a value of ['a] should be considered as an
-      operator.
+    - how to determine whether a value of ['i] should be considered an
+      operator;
+    - how to parse tokens of ['i] that aren't operators.
 
     The algorithm implemented is an extension of the Pratt parser. The Shunting
     Yard algorithm could also be used.
@@ -32,11 +34,11 @@ type associativity =
 type 't error =
   [ `Op_conflict of 't
     (** Priority or associativiy conflict between two operators.
-        In [`OpConflict (t,o)], [o] is an operator which generates a conflict
-        preventing term [t] to be parsed. *)
+        In [`OpConflict o], [o] is an operator which generates a conflict. *)
   | `Too_few_arguments
     (** More arguments are expected. It is raised for instance on
-        partial application of operators, such as [x +]. *)
+        partial application of operators, such as [x +]; or when an empty input
+        is given to the parser. *)
   ]
 (** Errors that can be encountered while parsing a stream of terms. *)
 
@@ -95,15 +97,13 @@ val expression :
   -> ops:('a, 'b) Operators.t
   -> ('a, 'b) parser
 (** [expression appl token ops] is a parser from sequences of ['a] to
-    structured values of type ['b]. The parser is driven by the [ops] value
-    which determines which tokens are operators. Tokens that aren't operators
-    are parsed using the [token] function.
+    structured values of type ['b]. The parser is driven by the operator parser
+    [ops] which determines which tokens are operators. Tokens that aren't
+    operators are parsed using the [token] function.
 
     If tokens are seen as leaves of binary trees, the function [appl] is the
     concatenation of two binary trees. If tokens are seen as terms, [appl]
     is the application.
-
-    The structure [ops] is in charge of specifying which tokens are operators.
 
     For instance, assuming that [+] is declared infix and we're working with
     numbers, it can transform [3 + 5 × 2] encoded as the stream of terms [3, +,
