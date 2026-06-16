@@ -25,8 +25,8 @@ let token x = x
 (* And that's it! The function [arith] below is able to parse arithmetic
    expressions *)
 
-let arith : term Stream.t -> (term, _) result =
-  Pratter.expression ~token ~appl ~ops
+let arith (terms : term Seq.t) : (term, _) result =
+  Pratter.(run (expression ~token ~appl ~ops) terms)
 
 let () =
   (* Let's try it, we'll parse the input [(x !) + (y * (-z))] represented as a
@@ -44,4 +44,4 @@ let () =
       ( Appl (Symb "+", Appl (Symb "!", Symb "x"))
       , Appl (Appl (Symb "*", Symb "y"), Appl (Symb "-", Symb "z")) )
   in
-  assert (arith (Stream.of_list input) = Ok output)
+  assert (arith (List.to_seq input) = Ok output)

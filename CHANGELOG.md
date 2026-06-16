@@ -4,9 +4,17 @@ Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
 
-## [4.0] -- 2024-09-19
+## [4.0] -- 2024-10-04
 
 ### Changed
+
+The parser is made functional: the use of `camlp-streams` has been dropped in
+favour of sequences of the `Seq` module. The parser is written in a monad.
+
+🧨 The error `` `Op_conflict`` now takes a single argument instead of two.
+
+🧨 Introduced a type for parsers. The function `expression` builds a parser
+that can then be run on any sequence with the `run` function.
 
 🧨 A token can have different fixities depending on the context its in. For
 instance, the `-` can be declared both prefix and infix, resulting in `- x - y`
@@ -33,6 +41,7 @@ the rule is the following. For any operator `op`
 
 🧨 Use camel case for errors: `OpConflict` changed to `Op_conflict` and
 `TooFewArguments` to `Too_few_arguments`.
+
 ### Removed
 
 🧨 Errors `UnexpectedPostfix` and `UnexpectedInfix` have been removed. If a
