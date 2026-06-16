@@ -14,16 +14,19 @@ type term = Appl of term * term | Symb of string
    they're infix, prefix or postfix and what's their precedence *)
 let ops =
   let open Pratter.Operators in
-  prefix (( = ) (Symb "-")) 1.0
-  <+> infix (( = ) (Symb "+")) Left 0.5
-  <+> infix (( = ) (Symb "*")) Left 0.6
-  <+> postfix (( = ) (Symb "!")) 1.0
+  prefix (function Symb "-" as s -> Some s | _ -> None) 1.0
+  <+> infix (function Symb "+" as s -> Some s | _ -> None) Left 0.5
+  <+> infix (function Symb "*" as s -> Some s | _ -> None) Left 0.6
+  <+> postfix (function Symb "!" as s -> Some s | _ -> None) 1.0
+
+let appl x y = Appl (x, y)
+let token x = x
 
 (* And that's it! The function [arith] below is able to parse arithmetic
    expressions *)
 
 let arith : term Stream.t -> (term, _) result =
-  Pratter.expression ~appl:(fun x y -> Appl (x, y)) ~ops
+  Pratter.expression ~token ~appl ~ops
 
 let () =
   (* Let's try it, we'll parse the input [(x !) + (y * (-z))] represented as a
