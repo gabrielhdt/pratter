@@ -1,12 +1,12 @@
 opam-version: "2.0"
 version: "1.1"
-synopsis:
-  "An implementation of the Pratt parsing algorithm for first order terms"
+synopsis: "An extended Pratt parser"
 description: """
 Pratter is a library that provides a parser that transforms
 streams of terms to applied terms.  Terms may contain infix or prefix operators
-and native applications.  The parser is an extension of the Pratt parsing
-algorithm."""
+and native applications.  The parser is based on the Pratt parsing
+algorithm and extended to handle term application and non associative
+operators."""
 maintainer: ["leirbag@sdfeu.org"]
 authors: ["Gabriel Hondet"]
 license: "BSD-3-Clause"
