@@ -3,7 +3,9 @@
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Lines marked with 🧨 describe breaking changes.
 
-## [Unreleased]
+## [5.0.2] -- 2026-06-16
+
+Transfer ownership of repository to the Deducteam and review documentation.
 
 ## [5.0.1] -- 2025-02-27
 

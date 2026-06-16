@@ -1,6 +1,6 @@
-# [Pratter](https://forge.tedomum.net/koizel/pratter)
+# [Pratter](https://github.com/Deducteam/pratter)
 
-By Gabriel Hondet
+Copyright Deducteam
 
 Pratter is a library that allows to parse expressions with infix, postfix or
 prefix operators.
@@ -61,4 +61,4 @@ $ ./a.out
   involved than the one in this readme.
 
 You can report issues, ask questions or start discussions using the
-[issue tracker](https://forge.tedomum.net/koizel/pratter/issues).
+[issue tracker](https://github.com/Deducteam/pratter).
