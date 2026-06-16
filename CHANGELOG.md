@@ -4,7 +4,7 @@ Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
 
-## [4.0] -- 2024-10-04
+## [4.0] -- 2024-10-08
 
 ### Changed
 
