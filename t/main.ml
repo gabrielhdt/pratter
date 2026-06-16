@@ -1,11 +1,10 @@
 module StrMap = Map.Make (String)
 
-(** Data structure that allow to create the [get_unary] and [get_binary]
-    functions in particular. [make_appl] can use this data structure as well. *)
 type table = {
     unary : Pratter.priority StrMap.t
   ; binary : (Pratter.priority * Pratter.associativity) StrMap.t
 }
+(** Data structure containing the operators. *)
 
 let empty : table = { unary = StrMap.empty; binary = StrMap.empty }
 
@@ -20,21 +19,18 @@ struct
   type nonrec term = term
   type nonrec table = table
 
-  let get_unary { unary; _ } t =
+  let get { unary; binary } t =
     match t with
     | Symb id -> (
-        try Some (StrMap.find id unary)
-        with Not_found -> None )
+        try Some (Pratter.Una, StrMap.find id unary)
+        with Not_found -> (
+          try
+            let bp, assoc = StrMap.find id binary in
+            Some (Bin assoc, bp)
+          with Not_found -> None ) )
     | _ -> None
 
-  let get_binary { binary; _ } t =
-    match t with
-      | Symb id -> (
-          try Some (StrMap.find id binary)
-          with Not_found -> None )
-      | _ -> None
-
-  let make_appl _ t u = Appl (t, u)
+  let make_appl t u = Appl (t, u)
 end
 
 module SupPrat = Pratter.Make (Support)
@@ -45,7 +41,7 @@ let rec add_args : table -> term -> term list -> term =
  fun tbl hd args ->
   match args with
   | [] -> hd
-  | a :: args -> add_args tbl (Support.make_appl tbl hd a) args
+  | a :: args -> add_args tbl (Support.make_appl hd a) args
 
 (** Module of testable terms for Alcotest. *)
 module TTerm : Alcotest.TESTABLE with type t = term = struct
@@ -97,14 +93,14 @@ let appl_opertor () =
   let f = symb "f" in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ f; x; symb "+"; x ] in
-  let parsed = add_args tbl (symb "+") [ Support.make_appl tbl f x; x ] in
+  let parsed = add_args tbl (symb "+") [ Support.make_appl f x; x ] in
   Alcotest.(check tterm) "f x + x" (SupPrat.expression tbl not_parsed) parsed
 
 let simple_unary () =
   let tbl = { empty with unary = StrMap.add "!" 1.0 StrMap.empty } in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ symb "!"; x ] in
-  let parsed = Support.make_appl tbl (symb "!") x in
+  let parsed = Support.make_appl (symb "!") x in
   Alcotest.(check tterm) "! x" (SupPrat.expression tbl not_parsed) parsed
 
 let unary_appl () =
@@ -112,11 +108,8 @@ let unary_appl () =
   let x = symb "x" in
   let f = symb "f" in
   let not_parsed = Stream.of_list [ symb "!"; f; x ] in
-  let parsed = Support.(make_appl tbl (symb "!") (make_appl tbl f x)) in
-  Alcotest.(check tterm)
-    "! f x"
-    (SupPrat.expression tbl not_parsed)
-    parsed
+  let parsed = Support.(make_appl (symb "!") (make_appl f x)) in
+  Alcotest.(check tterm) "! f x" (SupPrat.expression tbl not_parsed) parsed
 
 let unary_appl_in () =
   let tbl = { empty with unary = StrMap.add "!" 1.0 StrMap.empty } in
@@ -125,13 +118,115 @@ let unary_appl_in () =
   let fac = symb "!" in
   let not_parsed = Stream.of_list [ f; fac; x ] in
   let parsed =
-    let inside = Support.make_appl tbl fac x in
-    Support.(make_appl tbl f inside)
+    let inside = Support.make_appl fac x in
+    Support.(make_appl f inside)
   in
-  Alcotest.(check tterm)
-    "f ! x"
-    (SupPrat.expression tbl not_parsed)
-    parsed
+  Alcotest.(check tterm) "f ! x" (SupPrat.expression tbl not_parsed) parsed
+
+let precedences_left_same () =
+  (* x + y * z = (x + y) * z when bp(+) = bp( * ) and both are left
+     associative *)
+  let tbl =
+    Pratter.(StrMap.(empty |> add "+" (1.0, Left) |> add "*" (1.0, Left)))
+  in
+  let tbl = { empty with binary = tbl } in
+  let not_parsed =
+    Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
+  in
+  let parsed =
+    let left = add_args tbl (symb "+") [ symb "x"; symb "y" ] in
+    add_args tbl (symb "*") [ left; symb "z" ]
+  in
+  Alcotest.check tterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+
+let precedences_right_same () =
+  (* x + y * z = x + (y * z) when bp(+) = bp( * ) and both are right
+     associative *)
+  let tbl =
+    Pratter.(StrMap.(empty |> add "+" (1.0, Right) |> add "*" (1.0, Right)))
+  in
+  let tbl = { empty with binary = tbl } in
+  let not_parsed =
+    Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
+  in
+  let parsed =
+    let right = add_args tbl (symb "*") [ symb "y"; symb "z" ] in
+    add_args tbl (symb "+") [ symb "x"; right ]
+  in
+  Alcotest.check tterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+
+let precedences_lt_not_assoc () =
+  (* x + y * z = x + (y * z) when bp(+) < bp( * ) and both are not
+     associative *)
+  let tbl =
+    Pratter.(StrMap.(empty |> add "+" (1.0, Neither) |> add "*" (1.1, Neither)))
+  in
+  let tbl = { empty with binary = tbl } in
+  let not_parsed =
+    Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
+  in
+  let parsed =
+    let right = add_args tbl (symb "*") [ symb "y"; symb "z" ] in
+    add_args tbl (symb "+") [ symb "x"; right ]
+  in
+  Alcotest.check tterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+
+let precedences_gt_not_assoc () =
+  (* x + y * z = (x + y) * z when bp(+) > bp( * ) and both are not
+     associative *)
+  let tbl =
+    Pratter.(StrMap.(empty |> add "+" (1.1, Neither) |> add "*" (1.0, Neither)))
+  in
+  let tbl = { empty with binary = tbl } in
+  let not_parsed =
+    Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
+  in
+  let parsed =
+    let left = add_args tbl (symb "+") [ symb "x"; symb "y" ] in
+    add_args tbl (symb "*") [ left; symb "z" ]
+  in
+  Alcotest.check tterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+
+let precedences_eq_not_assoc () =
+  (* x + y * z fails when bp(+) = bp( * ) and both are not associative *)
+  let tbl =
+    Pratter.(StrMap.(empty |> add "+" (1.0, Neither) |> add "*" (1.0, Neither)))
+  in
+  let tbl = { empty with binary = tbl } in
+  let not_parsed =
+    Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
+  in
+  Alcotest.(check bool)
+    "x + y * z"
+    ( try
+        ignore (SupPrat.expression tbl not_parsed);
+        false
+      with SupPrat.OpConflict (_, _) -> true )
+    true
+
+let partial_binary () =
+  let tbl = StrMap.singleton "+" (1.0, Pratter.Left) in
+  let tbl = { empty with binary = tbl } in
+  let not_parsed = Stream.of_list [ symb "x"; symb "+" ] in
+  Alcotest.(check bool)
+    "x +"
+    ( try
+        ignore (SupPrat.expression tbl not_parsed);
+        false
+      with SupPrat.TooFewArguments -> true )
+    true
+
+let partial_unary () =
+  let tbl = StrMap.singleton "!" 1.0 in
+  let tbl = { empty with unary = tbl } in
+  let not_parsed = Stream.of_list [ symb "!" ] in
+  Alcotest.(check bool)
+    "!"
+    ( try
+        ignore (SupPrat.expression tbl not_parsed);
+        false
+      with SupPrat.TooFewArguments -> true )
+    true
 
 let _ =
   let open Alcotest in
@@ -142,11 +237,21 @@ let _ =
           test_case "simple" `Quick simple_binary
         ; test_case "two" `Quick two_operators
         ; test_case "appl-bin" `Quick appl_opertor
+        ; test_case "left assoc, same bp" `Quick precedences_left_same
+        ; test_case "right assoc, same bp" `Quick precedences_right_same
+        ; test_case "not assoc, lt bp" `Quick precedences_lt_not_assoc
+        ; test_case "not assoc, gt bp" `Quick precedences_gt_not_assoc
+        ; test_case "not assoc, same bp" `Quick precedences_eq_not_assoc
         ] )
     ; ( "unary"
       , [
           test_case "simple" `Quick simple_unary
         ; test_case "application head" `Quick unary_appl
         ; test_case "application argument" `Quick unary_appl_in
+        ] )
+    ; ( "errors"
+      , [
+          test_case "partial binary" `Quick partial_binary
+        ; test_case "partial unary" `Quick partial_unary
         ] )
     ]
