@@ -1,122 +1,124 @@
-type ident = string
-(** Type of identifiers. *)
+module StrMap = Map.Make (String)
+
+type table = {
+    unary : Pratter.priority StrMap.t
+  ; binary : (Pratter.priority * Pratter.associativity) StrMap.t
+}
+
+let empty : table = { unary = StrMap.empty; binary = StrMap.empty }
 
 (** A simple term structure. *)
-type term =
-  | Appl of term * term
-  | Symb of ident
-  | BinO of term * ident * term
-  | UnaO of ident * term
+type term = Appl of term * term | Symb of string
 
 (** [symb id] creates a term from identifier [id]. *)
 let symb id = Symb id
 
-module Support : Pratter.SUPPORT with type ident = string and type term = term =
+module Support : Pratter.SUPPORT with type term = term and type table = table =
 struct
-  type nonrec ident = ident
-  type pos = unit (* We ignore positions. *)
-
-  type popt = pos option
   type nonrec term = term
+  type nonrec table = table
 
-  let get_ident = function Symb id -> Some (id, None) | _ -> None
-  let make_appl t u = Appl (t, u)
-  let make_bin_appl t _ (id, _, _) u = BinO (t, id, u)
-  let make_una_appl _ (id, _) t = UnaO (id, t)
+  let get_unary { unary; _ } t =
+    match t with Symb id -> StrMap.find_opt id unary | _ -> None
+
+  let get_binary { binary; _ } t =
+    match t with Symb id -> StrMap.find_opt id binary | _ -> None
+
+  let make_appl _ t u = Appl (t, u)
 end
 
 module SupPrat = Pratter.Make (Support)
 
-(* We compare the printed form of terms. *)
-let pp_ident oc id = Format.pp_print_string oc id
+let rec add_args : table -> term -> term list -> term =
+ fun tbl hd args ->
+  match args with
+  | [] -> hd
+  | a :: args -> add_args tbl (Support.make_appl tbl hd a) args
 
-let rec pp_term oc t =
-  match t with
-  | Appl (t, u) -> Format.fprintf oc "@(%a, %a)" pp_term t pp_term u
-  | Symb id -> pp_ident oc id
-  | BinO (t, op, u) -> Format.fprintf oc "([%a %s %a])" pp_term t op pp_term u
-  | UnaO (op, t) -> Format.fprintf oc "([%s %a])" op pp_term t
+module TTerm : Alcotest.TESTABLE with type t = term = struct
+  type t = term
 
-let to_string t = Format.asprintf "%a" pp_term t
+  let rec equal t u =
+    match (t, u) with
+    | Symb t, Symb u -> String.equal t u
+    | Appl (t, t'), Appl (u, u') -> equal t u && equal t' u'
+    | _ -> false
+
+  let rec pp oc t =
+    match t with
+    | Appl (t, u) -> Format.fprintf oc "@(%a, %a)" pp t pp u
+    | Symb id -> Format.pp_print_string oc id
+end
+
+let tterm : (module Alcotest.TESTABLE with type t = term) = (module TTerm)
 
 let simple_binary () =
-  SupPrat.flush ();
-  SupPrat.add_binary "+" 1.0 Pratter.Left;
+  let tbl = StrMap.add "+" (1.0, Pratter.Left) StrMap.empty in
+  let tbl = { empty with binary = tbl } in
   let x = symb "x" in
-  let not_parsed = Stream.of_list [ x; symb "+"; x ] in
-  let parsed = BinO (x, "+", x) in
-  Alcotest.(check string)
-    "simple"
-    (to_string (SupPrat.expression not_parsed))
-    (to_string parsed)
+  let y = symb "y" in
+  let not_parsed = Stream.of_list [ x; symb "+"; y ] in
+  let parsed = add_args tbl (symb "+") [ x; y ] in
+  Alcotest.(check tterm) "simple" (SupPrat.expression tbl not_parsed) parsed
 
 let two_operators () =
-  SupPrat.flush ();
-  SupPrat.add_binary "+" 1.0 Pratter.Left;
-  SupPrat.add_binary "*" 1.1 Pratter.Left;
-  let x = symb "x" in
-  let not_parsed = Stream.of_list [ x; symb "+"; x; symb "*"; x ] in
-  let parsed =
-    let right = Support.make_bin_appl x None ("*", Pratter.Left, 1.1) x in
-    Support.make_bin_appl x None ("+", Pratter.Left, 1.0) right
+  let tbl =
+    [ ("+", (1.0, Pratter.Left)); ("*", (1.1, Pratter.Left)) ]
+    |> List.to_seq |> StrMap.of_seq
   in
-  Alcotest.(check string)
-    "two-ops"
-    (to_string (SupPrat.expression not_parsed))
-    (to_string parsed)
+  let tbl = { empty with binary = tbl } in
+  let x = symb "x" in
+  let y = symb "y" in
+  let z = symb "z" in
+  let not_parsed = Stream.of_list [ x; symb "+"; y; symb "*"; z ] in
+  let parsed =
+    let right = add_args tbl (symb "*") [ y; z ] in
+    add_args tbl (symb "+") [ x; right ]
+  in
+  Alcotest.(check tterm) "two-ops" (SupPrat.expression tbl not_parsed) parsed
 
 let appl_opertor () =
-  SupPrat.flush ();
-  SupPrat.add_binary "+" 1.0 Pratter.Left;
+  let tbl =
+    { empty with binary = StrMap.add "+" (1.0, Pratter.Left) StrMap.empty }
+  in
   let f = symb "f" in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ f; x; symb "+"; x ] in
-  let parsed =
-    let plus = ("+", Pratter.Left, 1.0) in
-    Support.(make_bin_appl (make_appl f x) None plus x)
-  in
-  Alcotest.(check string)
-    "appl-bin"
-    (to_string (SupPrat.expression not_parsed))
-    (to_string parsed)
+  let parsed = add_args tbl (symb "+") [ Support.make_appl tbl f x; x ] in
+  Alcotest.(check tterm) "appl-bin" (SupPrat.expression tbl not_parsed) parsed
 
 let simple_unary () =
-  SupPrat.flush ();
-  SupPrat.add_unary "!" 1.0;
+  let tbl = { empty with unary = StrMap.add "!" 1.0 StrMap.empty } in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ symb "!"; x ] in
-  let parsed = Support.make_una_appl None ("!", 1.0) x in
-  Alcotest.(check string)
-    "simple"
-    (to_string (SupPrat.expression not_parsed))
-    (to_string parsed)
+  let parsed = Support.make_appl tbl (symb "!") x in
+  Alcotest.(check tterm) "simple" (SupPrat.expression tbl not_parsed) parsed
 
 let unary_appl () =
-  SupPrat.flush ();
-  SupPrat.add_unary "!" 1.0;
+  let tbl = { empty with unary = StrMap.add "!" 1.0 StrMap.empty } in
   let x = symb "x" in
   let f = symb "f" in
   let not_parsed = Stream.of_list [ symb "!"; f; x ] in
-  let parsed = Support.(make_una_appl None ("!", 1.0) (make_appl f x)) in
-  Alcotest.(check string)
+  let parsed = Support.(make_appl tbl (symb "!") (make_appl tbl f x)) in
+  Alcotest.(check tterm)
     "application"
-    (to_string (SupPrat.expression not_parsed))
-    (to_string parsed)
+    (SupPrat.expression tbl not_parsed)
+    parsed
 
 let unary_appl_in () =
-  SupPrat.flush ();
-  SupPrat.add_unary "!" 1.0;
+  let tbl = { empty with unary = StrMap.add "!" 1.0 StrMap.empty } in
   let x = symb "x" in
   let f = symb "f" in
-  let not_parsed = Stream.of_list [ f; symb "!"; x ] in
+  let fac = symb "!" in
+  let not_parsed = Stream.of_list [ f; fac; x ] in
   let parsed =
-    let inside = Support.make_una_appl None ("!", 1.0) x in
-    Support.(make_appl f inside)
+    let inside = Support.make_appl tbl fac x in
+    Support.(make_appl tbl f inside)
   in
-  Alcotest.(check string)
+  Alcotest.(check tterm)
     "application not top"
-    (to_string (SupPrat.expression not_parsed))
-    (to_string parsed)
+    (SupPrat.expression tbl not_parsed)
+    parsed
 
 let _ =
   let open Alcotest in
