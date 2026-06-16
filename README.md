@@ -1,90 +1,74 @@
-Pratter: A parser for terms with operators and applications
-===========================================================
+# [Pratter](https://forge.tedomum.net/koizel/pratter)
 
-Pratter is a library that provides a parser that transforms streams of terms to
-applied terms.  Terms may contain infix, prefix or postfix operators and
-applications.  The parser is an extension of the Pratt parsing algorithm.
+By Gabriel Hondet
 
-Examples can be seen in tests inside the `t/` folder.
+Pratter helps you parsing streams of tokens interspersed with prefix, postfix
+or infix operators.
+Unlike parser generators such as
+[ocamlyacc](https://v2.ocaml.org/manual/lexyacc.html) or
+[Menhir](http://gallium.inria.fr/~fpottier/menhir/),
+parsing rules are written in OCaml and they can be edited dynamically.
+On the other hand Pratter can parse
+a very limited subset of what Menhir and yacc can.
 
-Example: simple terms
----------------------
+You are free to copy, modify and distribute Pratter with attribution under the
+terms of the BSD 3 Clause license. See the [license](./LICENSE) for more details.
 
-Terms are made of symbols and applications and some symbol can
-be declared to be operators.
+## Getting started
 
-Start by defining the terms,
-``` ocaml
-type term = Appl of term * term | Symb of string
+To compile and use pratter, you need
+
+- ocaml >= 4.08
+- dune >= 2.7
+
+Then, at the root of the source tree,
+```command
+$ dune build
+$ dune install
 ```
 
-and the data structure that maps symbols identifiers to operators properties,
+You can try the library in the toplevel: the following code defines a parser
+for the language made of strings interspersed with infix `+` operators:
 ```ocaml
-type table = {
-    prefix  : (string * Pratter.priority) list
-  ; infix : (string * (Pratter.priority * Pratter.associativity)) list
-  ; postfix : (string * Pratter.priority) list
-}
+# #require "pratter";;
+# type t = A of t * t | S of string;;
+type t = A of t * t | S of string
+# let get () = function S "+" -> Some Pratter.(Infix Left, 0.3) | _ -> None;;
+val get : unit -> t -> (Pratter.operator * float) option = <fun>
+# module T = struct
+    type term = t
+    type table = unit
+    let get = get
+    let make_appl t u = A (t, u)
+  end;;
+module T :
+  sig
+    type term = t
+    type table = unit
+    val get : unit -> t -> (Pratter.operator * float) option
+    val make_appl : t -> t -> t
+  end
+# module Parser = Pratter.Make (T);;
+module Parser :
+  sig
+    type error =
+        [ `OpConflict of T.term * T.term
+        | ... ]
+    val expression : T.table -> T.term Stream.t -> (T.term, error) result
+  end
+# Parser.expression () (Stream.of_list [ S "x"; S "+"; S "y"]);;
+- : (T.term, Parser.error) result = Ok (A (A (S "+", S "x"), S "y"))
 ```
 
-Next, define a module to pack these two types, and two functions:
+## What next?
 
-- `get` that is able to retrieve the properties of a symbol if it is declared as
-  an operator,
-- `make_appl` that creates an application out of two terms.
+- There's a [change log](./CHANGELOG.md).
+- There's a [license](./LICENSE).
+- There are tests in directory `t`, in particular, there's a comparison with a
+  `lex`/`yacc` parser for a subset of the language of arithmetics.
+- [This file](./t/simple.ml) is another use case example that is slightly more
+  involved than the one in this readme.
 
-```ocaml
-module Terms : Pratter.SUPPORT with type term = term and type table = table =
-struct
-  type nonrec term = term
-  type nonrec table = table
-  let get { prefix; infix; postfix } (t: term) =
-  match t with
-  | Symb id -> (
-      try Some (Pratter.Prefix, List.assoc id prefix)
-      with Not_found -> (
-        try
-          let bp, assoc = List.assoc id infix in
-          Some (Pratter.Infix assoc, bp)
-        with Not_found -> (
-          try Some (Pratter.Postfix, List.assoc id postfix)
-          with Not_found -> None) ) )
-  | _ -> None
-
-  let make_appl t u = Appl (t, u)
-end
-
-module Parser = Pratter.Make (Terms)
-```
-
-Then that's it, we can parse streams of terms with operators. For instance,
-assume that we want to parse `x ! + y * -z` where
-
-- `+` and `*` are infix operators, with `*` having a higher binding power than
-  `+`;
-- `-` is a prefix operator having a higher binding power than `+` and `*`,
-- `!` is a postfix operator.
-
-Create a table holding these operators:
-
-``` ocaml
-let tbl =
-  { prefix = [ "-", 1.0 ]
-  ; infix = [ ("+", (0.5, Pratter.Left)) ; ("*", (0.6, Pratter.Left)) ]
-  ; postfix = [ "!", 1.0 ] }
-```
-
-Priority (also called binding power) can be any float, and associativity may be
-`Pratter.Left`, `Pratter.Right` or `Pratter.Neither`.
-
-Finally parse the input using `Parser.expression`:
-``` ocaml
-let input = [ Symb "x"; Symb "!"; Symb "+"; Symb "y"; Symb "*"; Symb "-"; Symb "z"]
-Parser.expression tbl (Stream.of_list input)
-```
-we obtain the term `(x !) + (y * (-z))` (wrapped into a `result`) represented by
-
-``` ocaml
-Appl (Appl (Symb "+", Appl (Symb "!", Symb "x")),
- Appl (Appl (Symb "*", Symb "y"), Appl (Symb "-", Symb "z")))
-```
+You can raise issues either using the [issue
+tracker](https://forge.tedomum.net/koizel/pratter/issues)
+or sending an email to `<koizel#pratter@aleeas.com>`.

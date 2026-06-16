@@ -1,5 +1,5 @@
 (tests
- (names main)
+ (names main simple)
  (libraries pratter alcotest qcheck qcheck-alcotest))
 
 (ocamllex uarithLex)
