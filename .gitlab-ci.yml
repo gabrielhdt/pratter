@@ -8,8 +8,9 @@
   parallel:
     # https://docs.gitlab.com/ee/ci/yaml/README.html#parallel-matrix-jobs
     matrix:
+    - OCAML_COMPILER: "4.10.0"
     - OCAML_COMPILER: "4.14.2"
-    - OCAML_COMPILER: "5.2.0"
+    - OCAML_COMPILER: "5.3.0"
 
 variables:
   CLEAN_OPAM_CACHE: "false"
@@ -304,7 +305,7 @@ pages:
       when: on_success
   artifacts:
     paths:
-      - public
+      - public/
   script:
     - rm -fR public/
     - mkdir -p docs
