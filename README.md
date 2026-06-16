@@ -16,7 +16,7 @@ terms of the BSD 3 Clause license. See the [license](./LICENSE) for more details
 
 To compile and use pratter, you need
 
-- ocaml >= 4.14
+- ocaml >= 4.10
 - dune >= 2.7
 
 Then, at the root of the source tree,
