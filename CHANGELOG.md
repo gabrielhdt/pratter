@@ -4,6 +4,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 ### Added
 - Non associative operators
+### Changed
+- One function `get` for operators in API
 
 ## [1.0.1] -- 2021-01-16
 ### Fixed

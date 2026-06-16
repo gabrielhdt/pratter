@@ -20,14 +20,15 @@ struct
   type nonrec term = term
   type nonrec table = table
 
-  let get_unary { unary; _ } t =
+  let get { unary; binary } t =
     match t with
-    | Symb id -> ( try Some (StrMap.find id unary) with Not_found -> None )
-    | _ -> None
-
-  let get_binary { binary; _ } t =
-    match t with
-    | Symb id -> ( try Some (StrMap.find id binary) with Not_found -> None )
+    | Symb id -> (
+        try Some (Pratter.Una, StrMap.find id unary)
+        with Not_found -> (
+          try
+            let bp, assoc = StrMap.find id binary in
+            Some (Bin assoc, bp)
+          with Not_found -> None ) )
     | _ -> None
 
   let make_appl _ t u = Appl (t, u)
