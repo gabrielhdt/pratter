@@ -40,7 +40,8 @@ let rtterm :
     (module Alcotest.TESTABLE with type t = (term, term Pratter.error) result) =
   (module RTTerm)
 
-(** {1 Simple tests} These tests define the behaviour of the Pratt parser. *)
+(** {1 Simple tests}
+    These tests define the behaviour of the Pratt parser. *)
 
 let simple_nothing () =
   let ops _ = [] in
@@ -356,7 +357,7 @@ let term_gen =
                ; (2, map2 appl (self (n / 2)) (self (n / 2)))
                ]))
 
-(** A {QCheck.arbitrary} for {b non-empty} term lists. *)
+(** A {!QCheck.arbitrary} for {b non-empty} term lists. *)
 let term_list =
   let pp_sep ppf () = Format.fprintf ppf "; " in
   let print = Format.asprintf "[%a]" (Format.pp_print_list ~pp_sep Terms.pp) in
