@@ -1,3 +1,6 @@
+(* Copyright (C) 2021,2022 Gabriel Hondet.
+   Subject to the BSD-3-Clause license *)
+
 (** This modules defines a functor whose image is a parser for terms with
     applications, infix, prefix or postfix operators. These terms are specified
     in the argument of the functor.
