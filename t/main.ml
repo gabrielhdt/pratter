@@ -21,10 +21,18 @@ struct
   type nonrec table = table
 
   let get_unary { unary; _ } t =
-    match t with Symb id -> StrMap.find_opt id unary | _ -> None
+    match t with
+    | Symb id -> (
+        try Some (StrMap.find id unary)
+        with Not_found -> None )
+    | _ -> None
 
   let get_binary { binary; _ } t =
-    match t with Symb id -> StrMap.find_opt id binary | _ -> None
+    match t with
+      | Symb id -> (
+          try Some (StrMap.find id binary)
+          with Not_found -> None )
+      | _ -> None
 
   let make_appl _ t u = Appl (t, u)
 end
@@ -46,7 +54,7 @@ module TTerm : Alcotest.TESTABLE with type t = term = struct
   (** Syntactic equality *)
   let rec equal t u =
     match (t, u) with
-    | Symb t, Symb u -> String.equal t u
+    | Symb t, Symb u -> t = u
     | Appl (t, t'), Appl (u, u') -> equal t u && equal t' u'
     | _ -> false
 
@@ -69,8 +77,7 @@ let simple_binary () =
 
 let two_operators () =
   let tbl =
-    [ ("+", (1.0, Pratter.Left)); ("*", (1.1, Pratter.Left)) ]
-    |> List.to_seq |> StrMap.of_seq
+    StrMap.(empty |> add "+" (1.0, Pratter.Left) |> add "*" (1.1, Pratter.Left))
   in
   let tbl = { empty with binary = tbl } in
   let x = symb "x" in
