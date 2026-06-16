@@ -6,9 +6,20 @@ Lines marked with 🧨 describe breaking changes.
 ### Added
 - Postfix operators
 ### Changed
-- `Una` constructor changed to `Prefix` 🧨
-- `Bin` constructor changed to `Infix` 🧨
-- `expression` can raise exception `UnexpectedPostfix`
+- 🧨 `Una` constructor changed to `Prefix`
+- 🧨 `Bin` constructor changed to `Infix`
+- 🧨 Errors are encoded with a polymorphic variant rather than exceptions.
+  To port code, replace sections of the form
+  ```ocaml
+  try let t = SupPrat.expression tbl s in e with
+  | ... -> ...
+  ```
+  with
+  ```ocaml
+  match SupPrat.expression tbl s with
+  | Ok t -> e
+  | Error ... -> ...
+  ```
 
 ## [1.2.1] -- 2022-05-06
 ### Added

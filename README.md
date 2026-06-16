@@ -82,7 +82,7 @@ Finally parse the input using `Parser.expression`:
 let input = [ Symb "x"; Symb "!"; Symb "+"; Symb "y"; Symb "*"; Symb "-"; Symb "z"]
 Parser.expression tbl (Stream.of_list input)
 ```
-we obtain the term `(x !) + (y * (-z))` represented by
+we obtain the term `(x !) + (y * (-z))` (wrapped into a `result`) represented by
 
 ``` ocaml
 Appl (Appl (Symb "+", Appl (Symb "!", Symb "x")),
