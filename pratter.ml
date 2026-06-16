@@ -1,6 +1,6 @@
 (** This modules defines a functor whose image is a parser for terms with
-    applications, binary and unary operators. These terms are specified in the
-    argument of the functor.
+    applications, infix, prefix or postfix operators. These terms are specified
+    in the argument of the functor.
 
     The algorithm implemented is an extension of the Pratt parser. The Shunting
     Yard algorithm could also be used.
@@ -25,14 +25,15 @@ type priority = float
 
 (** A type to designate operators and their properties. *)
 type operator =
-  | Bin of associativity  (** Binary operator with an associativity. *)
-  | Una  (** Unary operator. *)
+  | Infix of associativity  (** Infix operator with an associativity. *)
+  | Prefix
+  | Postfix
 
 (** Types and utilities on terms that are to be Pratt parsed. *)
 module type SUPPORT = sig
   type term
-  (** The main type of terms, that contains symbols, applications, binary and
-      unary operators. *)
+  (** The main type of terms, that contains symbols, applications, infix, prefix
+      or postfix operators. *)
 
   type table
   (** The table is used to store available operators. *)
@@ -51,9 +52,13 @@ module Make : functor (Sup : SUPPORT) -> sig
   (** Raised when there is a priority or associativiy conflict between two
       operators. The arguments are the terms that generate the conflict. *)
 
-  exception UnexpectedBin of Sup.term
-  (** Raised when a binary operator appears without left context. If [+] is a
-      binary operator, it is raised in, e.g., [+ x x] or [x + + x x]. *)
+  exception UnexpectedInfix of Sup.term
+  (** Raised when an infix operator appears without left context. If [+] is an
+      infix operator, it is raised in, e.g., [+ x x] or [x + + x x]. *)
+
+  exception UnexpectedPostfix of Sup.term
+  (** Raised when a postfix operator appears without left context. If [!] is a
+      postfix operator, it is raised in [! x]. *)
 
   exception TooFewArguments
   (** Raised when more arguments are expected. It is raised for instance on
@@ -71,8 +76,10 @@ module Make : functor (Sup : SUPPORT) -> sig
                              enough elements.
       @raise OpConflict when the input terms cannot be parenthesised
                         unambiguously.
-      @raise UnexpectedBin when a binary operator appear without a left
-                           context. *)
+      @raise UnexpectedInfix when an infix operator appear without left
+                             context.
+      @raise UnexpectedPostfix when a postfix operator appears without left
+                               context *)
 end =
 functor
   (Sup : SUPPORT)
@@ -82,22 +89,26 @@ functor
 
     exception OpConflict of Sup.term * Sup.term
     exception TooFewArguments
-    exception UnexpectedBin of Sup.term
+    exception UnexpectedInfix of Sup.term
+    exception UnexpectedPostfix of Sup.term
 
     (* NOTE: among the four functions operating on streams, only [expression]
        consumes elements from it. *)
 
     (** [nud tbl strm t] is the production of term [t] with {b no} left context.
-        If [t] is not an operator, [nud] is the identity. Otherwise, the output
-        is a production rule. *)
+        If [t] is not a prefix operator, [nud] is the identity. Otherwise, the
+        output is a production rule.
+        @raise UnexpectedInfix if [t] is a binary operator.
+        @raise UnexpectedPostfix if [t] is a postfix operator. *)
     let rec nud : table -> Sup.term Stream.t -> Sup.term -> Sup.term =
      fun tbl strm t ->
       match Sup.get tbl t with
-      | Some (Una, rbp) ->
+      | Some (Prefix, rbp) ->
           Sup.make_appl t (expression ~tbl ~rbp ~rassoc:Neither strm)
-      | Some (Bin _, _) -> raise (UnexpectedBin t)
+      | Some (Infix _, _) -> raise (UnexpectedInfix t)
       (* If the line above is erased, [+ x x] is parsed as [(+ x) x], and
          [x + + x x] as [(+ x) ((+ x) x)]. *)
+      | Some (Postfix, _) -> raise (UnexpectedPostfix t)
       | _ -> t
 
     (** [led ~tbl ~strm ~left t assoc bp] is the production of term [t] with
@@ -138,7 +149,7 @@ functor
         | None -> left
         | Some pt -> (
             match Sup.get tbl pt with
-            | Some (Bin lassoc, lbp) ->
+            | Some (Infix lassoc, lbp) ->
                 if lbp > rbp || (lbp = rbp && lassoc = Right && rassoc = Right)
                 then
                   (* Performed before to execute side effect on stream. *)
@@ -148,7 +159,13 @@ functor
                   lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
                 then left
                 else raise (OpConflict (left, pt))
-            | _ ->
+            | Some (Postfix, lbp) ->
+                if lbp > rbp then
+                  let next = Stream.next strm in
+                  aux (Sup.make_appl next left)
+                else if lbp = rbp then raise (OpConflict (left, pt))
+                else left
+            | Some (Prefix, _) | None ->
                 (* argument of an application *)
                 let next = Stream.next strm in
                 let right = nud tbl strm next in
