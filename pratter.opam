@@ -1,5 +1,5 @@
 opam-version: "2.0"
-version: "1.2"
+version: "1.2.1"
 synopsis: "An extended Pratt parser"
 description: """
 Pratter is a library that provides a parser that transforms
@@ -15,6 +15,7 @@ bug-reports: "https://github.com/gabrielhdt/pratter/issues"
 depends: [
   "ocaml" {>= "4.02"}
   "dune" {>= "2.7"}
+  "camlp-streams"
   "alcotest" {with-test}
   "odoc" {with-doc}
 ]
