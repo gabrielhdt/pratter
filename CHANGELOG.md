@@ -4,6 +4,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 ### Added
 - Non associative operators
+- Error handling on partially applied operators (which raises a
+  `Stream.Failure`)
 ### Changed
 - One function `get` for operators in API
 - `make_appl` does not use the table of operators
