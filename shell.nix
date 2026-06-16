@@ -5,5 +5,5 @@ pkgs.mkShell {
     ocaml-lsp
     ocamlformat_0_26_2
     utop
-    dune_3 findlib camlp-streams alcotest qcheck qcheck-alcotest; };
+    dune_3 findlib alcotest qcheck qcheck-alcotest; };
 }
