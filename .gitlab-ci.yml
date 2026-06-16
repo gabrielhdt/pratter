@@ -20,7 +20,8 @@
     # - OCAML_COMPILER: "4.08.1"
     # - OCAML_COMPILER: "4.09.1"
     # - OCAML_COMPILER: "4.10.0"
-    - OCAML_COMPILER: "4.11.1"
+    # - OCAML_COMPILER: "4.11.1"
+    - OCAML_COMPILER: "4.14.0"
 
 variables:
   CLEAN_OPAM_CACHE: "false"
