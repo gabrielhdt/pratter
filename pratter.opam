@@ -15,7 +15,7 @@ license: "BSD-3-Clause"
 homepage: "https://forge.tedomum.net/koizel/pratter"
 bug-reports: "forge+koizel-pratter-440-88vbl82x0jh05jaaqy5kwyojw-issue@tedomum.net"
 depends: [
-  "ocaml" {>= "4.08.1"}
+  "ocaml" {>= "4.10.0"}
   "dune" {>= "2.7"}
   # Release 1.5.0 of alcotest fixes interactions with the result library
   "alcotest" {with-test & >= "1.5.0" & < "2"}
