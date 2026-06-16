@@ -30,7 +30,7 @@ type associativity =
           [x + y + z] results in a syntax error. *)
 
 type 't error =
-  [ `Op_conflict of 't * 't
+  [ `Op_conflict of 't
     (** Priority or associativiy conflict between two operators.
         In [`OpConflict (t,o)], [o] is an operator which generates a conflict
         preventing term [t] to be parsed. *)
@@ -39,6 +39,9 @@ type 't error =
         partial application of operators, such as [x +]. *)
   ]
 (** Errors that can be encountered while parsing a stream of terms. *)
+
+type ('a, 'b) result = ('a, 'b error) Stdlib.result
+(** A specialised error type. *)
 
 module Operators : sig
   type ('a, 'b) t
@@ -82,14 +85,19 @@ module Operators : sig
   (** Concatenate a list of operator specifications using [<+>]. *)
 end
 
+type ('tok, 'out) parser
+(** Values of that type are parsers from sequences of ['tok] to values of type
+    ['out]. *)
+
 val expression :
      appl:('b -> 'b -> 'b)
   -> token:('a -> 'b)
   -> ops:('a, 'b) Operators.t
-  -> 'a Stream.t
-  -> ('b, 'b error) result
-(** [expression appl token ops s] parses the stream of tokens [s] and turns it
-    into a full binary tree.
+  -> ('a, 'b) parser
+(** [expression appl token ops] is a parser from sequences of ['a] to
+    structured values of type ['b]. The parser is driven by the [ops] value
+    which determines which tokens are operators. Tokens that aren't operators
+    are parsed using the [token] function.
 
     If tokens are seen as leaves of binary trees, the function [appl] is the
     concatenation of two binary trees. If tokens are seen as terms, [appl]
@@ -101,3 +109,6 @@ val expression :
     numbers, it can transform [3 + 5 × 2] encoded as the stream of terms [3, +,
     5, ×, 2] into the binary tree [@(@(×,@(@(+,3),5)),2)] where [@] denotes
     application nodes. *)
+
+val run : ('tok, 'out) parser -> 'tok Seq.t -> ('out, 'tok) result
+(** Run the given parser on a sequence of tokens. *)
