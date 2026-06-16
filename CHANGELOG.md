@@ -1,10 +1,11 @@
 # Changelog
+
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Lines marked with 🧨 describe breaking changes.
 
 ## [Unreleased]
 
-## [5.0] -- 2025-02-11
+## [5.0] -- 2025-02-12
 
 ### Changed
 
@@ -20,7 +21,10 @@ appl:('b -> 'b -> 'b) -> token:('a -> 'b)
 -> ops:('a -> (fixity * float * 'b) list)
 -> ('a, 'b) parser
 ```
-and the `Operators` module has been deleted.
+
+### Removed
+
+The `Operators` module has been deleted.
 
 ## [4.0] -- 2024-10-08
 
