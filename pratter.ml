@@ -1,6 +1,9 @@
+(* Copyright (C) 2021,2022 Gabriel Hondet.
+   Subject to the BSD-3-Clause license *)
+
 (** This modules defines a functor whose image is a parser for terms with
-    applications, binary and unary operators. These terms are specified in the
-    argument of the functor.
+    applications, infix, prefix or postfix operators. These terms are specified
+    in the argument of the functor.
 
     The algorithm implemented is an extension of the Pratt parser. The Shunting
     Yard algorithm could also be used.
@@ -25,14 +28,15 @@ type priority = float
 
 (** A type to designate operators and their properties. *)
 type operator =
-  | Bin of associativity  (** Binary operator with an associativity. *)
-  | Una  (** Unary operator. *)
+  | Infix of associativity  (** Infix operator with an associativity. *)
+  | Prefix
+  | Postfix
 
 (** Types and utilities on terms that are to be Pratt parsed. *)
 module type SUPPORT = sig
   type term
-  (** The main type of terms, that contains symbols, applications, binary and
-      unary operators. *)
+  (** The main type of terms, that contains symbols, applications, infix, prefix
+      or postfix operators. *)
 
   type table
   (** The table is used to store available operators. *)
@@ -47,120 +51,113 @@ module type SUPPORT = sig
 end
 
 module Make : functor (Sup : SUPPORT) -> sig
-  exception OpConflict of Sup.term * Sup.term
-  (** Raised when there is a priority or associativiy conflict between two
-      operators. The arguments are the terms that generate the conflict. *)
+  type error =
+    [ `OpConflict of Sup.term * Sup.term
+      (** Priority or associativiy conflict between two operators.  In
+          [`OpConflict (t,o)], operator [o] generates a conflict which prevents
+          term [t] to be parsed. *)
+    | `UnexpectedInfix of Sup.term
+      (** An infix operator appears without left context. If [+] is an
+          infix operator, it is raised in, e.g., [+ x x] or [x + + x x]. *)
+    | `UnexpectedPostfix of Sup.term
+      (** A postfix operator appears without left context. If [!] is a
+          postfix operator, it is raised in [! x]. *)
+    | `TooFewArguments
+      (** More arguments are expected. It is raised for instance on
+          partial application of operators, such as [x +]. *)
+    ]
+  (** Errors that can be encountered while parsing a stream of terms. *)
 
-  exception UnexpectedBin of Sup.term
-  (** Raised when a binary operator appears without left context. If [+] is a
-      binary operator, it is raised in, e.g., [+ x x] or [x + + x x]. *)
-
-  exception TooFewArguments
-  (** Raised when more arguments are expected. It is raised for instance on
-      partial application of operators, such as [x +]. *)
-
-  val expression : Sup.table -> Sup.term Stream.t -> Sup.term
+  val expression : Sup.table -> Sup.term Stream.t -> (Sup.term, error) result
   (** [expression tbl s] parses stream of tokens [s] with table of operators
       [tbl]. It transforms a sequence of applications to a structured
       application tree containing infix and prefix operators. For instance,
       assuming that [+] is declared infix, it transforms [3 + 5 + 2],
       represented as [@(@(@(@(3,+),5),+),2)] (where [@] is the application) into
-      [(@(+(@(+,3,5)),2)].
-
-      @raise TooFewArguments when the stream [s] is empty or does not have
-                             enough elements.
-      @raise OpConflict when the input terms cannot be parenthesised
-                        unambiguously.
-      @raise UnexpectedBin when a binary operator appear without a left
-                           context. *)
+      [(@(+(@(+,3,5)),2)]. *)
 end =
 functor
   (Sup : SUPPORT)
   ->
   struct
-    type table = Sup.table
+    type error =
+      [ `OpConflict of Sup.term * Sup.term
+      | `UnexpectedInfix of Sup.term
+      | `UnexpectedPostfix of Sup.term
+      | `TooFewArguments ]
 
-    exception OpConflict of Sup.term * Sup.term
-    exception TooFewArguments
-    exception UnexpectedBin of Sup.term
+    let return, error = Result.(ok, error)
 
     (* NOTE: among the four functions operating on streams, only [expression]
        consumes elements from it. *)
 
     (** [nud tbl strm t] is the production of term [t] with {b no} left context.
-        If [t] is not an operator, [nud] is the identity. Otherwise, the output
-        is a production rule. *)
-    let rec nud : table -> Sup.term Stream.t -> Sup.term -> Sup.term =
-     fun tbl strm t ->
+        If [t] is not a prefix operator, [nud] is the identity. Otherwise, the
+        output is a production rule. *)
+    let rec nud tbl strm t =
       match Sup.get tbl t with
-      | Some (Una, rbp) ->
-          Sup.make_appl t (expression ~tbl ~rbp ~rassoc:Neither strm)
-      | Some (Bin _, _) -> raise (UnexpectedBin t)
+      | Some (Prefix, rbp) ->
+          Result.map (Sup.make_appl t)
+            (expression ~tbl ~rbp ~rassoc:Neither strm)
+      | Some (Infix _, _) -> error (`UnexpectedInfix t)
       (* If the line above is erased, [+ x x] is parsed as [(+ x) x], and
          [x + + x x] as [(+ x) ((+ x) x)]. *)
-      | _ -> t
+      | Some (Postfix, _) -> error (`UnexpectedPostfix t)
+      | _ -> return t
 
     (** [led ~tbl ~strm ~left t assoc bp] is the production of term [t] with
         left context [left]. We have the invariant that [t] is a binary operator
         with associativity [assoc] and binding power [bp]. This invariant is
         ensured while called in {!val:expression}. *)
-    and led :
-           tbl:table
-        -> strm:Sup.term Stream.t
-        -> left:Sup.term
-        -> Sup.term
-        -> associativity
-        -> priority
-        -> Sup.term =
-     fun ~tbl ~strm ~left t assoc bp ->
+    and led ~tbl ~strm ~left t assoc bp =
       let rbp =
         match assoc with
         | Right -> bp *. (1. -. epsilon_float)
         | Left | Neither -> bp
       in
-      Sup.(
-        make_appl (make_appl t left) (expression ~tbl ~rbp ~rassoc:assoc strm))
+      Result.map
+        Sup.(make_appl (make_appl t left))
+        (expression ~tbl ~rbp ~rassoc:assoc strm)
 
     (** [expression ~tbl ~rbp ~rassoc strm] parses next token of stream
         [strm] with previous operator having a right binding power [~rbp] and
         associativity [~rassoc]. *)
-    and expression :
-           tbl:table
-        -> rbp:priority
-        -> rassoc:associativity
-        -> Sup.term Stream.t
-        -> Sup.term =
-     fun ~tbl ~rbp ~rassoc strm ->
+    and expression ~tbl ~rbp ~rassoc strm =
       (* [aux left] inspects the stream and may consume one of its elements, or
          return [left] unchanged. *)
       let rec aux (left : Sup.term) =
         match Stream.peek strm with
-        | None -> left
+        | None -> return left
         | Some pt -> (
             match Sup.get tbl pt with
-            | Some (Bin lassoc, lbp) ->
+            | Some (Infix lassoc, lbp) ->
                 if lbp > rbp || (lbp = rbp && lassoc = Right && rassoc = Right)
                 then
                   (* Performed before to execute side effect on stream. *)
                   let next = Stream.next strm in
-                  aux (led ~tbl ~strm ~left next lassoc lbp)
+                  Result.bind (led ~tbl ~strm ~left next lassoc lbp) aux
                 else if
                   lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
-                then left
-                else raise (OpConflict (left, pt))
-            | _ ->
+                then return left
+                else error (`OpConflict (left, pt))
+            | Some (Postfix, lbp) ->
+                if lbp > rbp then
+                  let next = Stream.next strm in
+                  aux (Sup.make_appl next left)
+                else if lbp = rbp then error (`OpConflict (left, pt))
+                else return left
+            | Some (Prefix, _) | None ->
                 (* argument of an application *)
                 let next = Stream.next strm in
-                let right = nud tbl strm next in
-                aux (Sup.make_appl left right))
+                Result.bind (nud tbl strm next) (fun right ->
+                    aux (Sup.make_appl left right)))
       in
 
       try
         let next = Stream.next strm in
         let left = nud tbl strm next in
-        aux left
-      with Stream.Failure -> raise TooFewArguments
+        Result.bind left aux
+      with Stream.Failure -> error `TooFewArguments
 
-    let expression : table -> Sup.term Stream.t -> Sup.term =
-     fun tbl -> expression ~tbl ~rbp:neg_infinity ~rassoc:Neither
+    let expression tbl = expression ~tbl ~rbp:neg_infinity ~rassoc:Neither
   end
