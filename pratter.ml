@@ -2,11 +2,10 @@
     applications, binary and unary operators. These terms are specified in the
     argument of the functor.
 
-    The algorithm implemented is an extension of the Pratt parser. The Sunting
+    The algorithm implemented is an extension of the Pratt parser. The Shunting
     Yard algorithm could also be used.
     @see <https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html>
-    @see <https://dev.to/jrop/pratt-parsing>
-    @see <https://effbot.org/zone/simple-top-down-parsing.htm> *)
+    @see <https://dev.to/jrop/pratt-parsing> *)
 
 (** Associativity of an operator. *)
 type associativity =
@@ -48,9 +47,9 @@ module type SUPPORT = sig
 end
 
 module Make : functor (Sup : SUPPORT) -> sig
-  exception WrongAssoc of Sup.term * Sup.term
-  (** Raised when there is a priority conflict between two operators. The
-      arguments are the terms that generate the conflict. *)
+  exception OpConflict of Sup.term * Sup.term
+  (** Raised when there is a priority or associativiy conflict between two
+      operators. The arguments are the terms that generate the conflict. *)
 
   exception TooFewArguments
   (** Raised when more arguments are expected. It is raised for instance on
@@ -64,8 +63,10 @@ module Make : functor (Sup : SUPPORT) -> sig
       represented as [@(@(@(@(3,+),5),+),2)] (where [@] is the application) into
       [(@(+(@(+,3,5)),2)].
 
-      @raises ParseError when input terms are ill-formed, with an explanation
-              message. *)
+      @raises TooFewArguments when the stream [s] is empty or does not have
+                              enough elements.
+      @raises OpConflict when the input terms cannot be parenthesised
+                         unambiguously. *)
 end =
 functor
   (Sup : SUPPORT)
@@ -73,7 +74,7 @@ functor
   struct
     type table = Sup.table
 
-    exception WrongAssoc of Sup.term * Sup.term
+    exception OpConflict of Sup.term * Sup.term
     exception TooFewArguments
 
     (* NOTE: among the four functions operating on streams, only [expression]
@@ -136,7 +137,7 @@ functor
                 else if
                   lbp < rbp || (lbp = rbp && lassoc = Left && rassoc = Left)
                 then left
-                else raise (WrongAssoc (left, pt))
+                else raise (OpConflict (left, pt))
             | _ ->
                 (* argument of an application *)
                 let next = Stream.next strm in
