@@ -65,6 +65,39 @@ module TTerm : Alcotest.TESTABLE with type t = term = struct
 end
 
 let tterm : (module Alcotest.TESTABLE with type t = term) = (module TTerm)
+let return, error = Result.(ok, error)
+
+module RTTerm : Alcotest.TESTABLE with type t = (term, SupPrat.error) result =
+struct
+  type t = (term, SupPrat.error) result
+
+  let equal t u =
+    match (t, u) with
+    | Ok t, Ok u
+    | Error (`UnexpectedInfix t), Error (`UnexpectedInfix u)
+    | Error (`UnexpectedPostfix t), Error (`UnexpectedPostfix u) ->
+        TTerm.equal t u
+    | Error `TooFewArguments, Error `TooFewArguments -> true
+    | Error (`OpConflict (t1, t2)), Error (`OpConflict (u1, u2)) ->
+        TTerm.equal t1 u1 && TTerm.equal t2 u2
+    | _, _ -> false
+
+  let pp oc t =
+    match t with
+    | Ok t -> TTerm.pp oc t
+    | Error (`UnexpectedInfix t) ->
+        Format.fprintf oc "Unexpected infix \"%a\"" TTerm.pp t
+    | Error (`UnexpectedPostfix t) ->
+        Format.fprintf oc "Unexpected postfix \"%a\"" TTerm.pp t
+    | Error `TooFewArguments -> Format.pp_print_string oc "Too few arguments"
+    | Error (`OpConflict (t, u)) ->
+        Format.fprintf oc "Operator conflict between \"%a\" and \"%a\"" TTerm.pp
+          t TTerm.pp u
+end
+
+let rtterm :
+    (module Alcotest.TESTABLE with type t = (term, SupPrat.error) result) =
+  (module RTTerm)
 
 let simple_infix () =
   let tbl = StrMap.add "+" (1.0, Pratter.Left) StrMap.empty in
@@ -72,8 +105,8 @@ let simple_infix () =
   let x = symb "x" in
   let y = symb "y" in
   let not_parsed = Stream.of_list [ x; symb "+"; y ] in
-  let parsed = add_args (symb "+") [ x; y ] in
-  Alcotest.(check tterm) "x + y" (SupPrat.expression tbl not_parsed) parsed
+  let parsed = return @@ add_args (symb "+") [ x; y ] in
+  Alcotest.check rtterm "x + y" (SupPrat.expression tbl not_parsed) parsed
 
 let two_operators () =
   let tbl =
@@ -85,10 +118,12 @@ let two_operators () =
   let z = symb "z" in
   let not_parsed = Stream.of_list [ x; symb "+"; y; symb "*"; z ] in
   let parsed =
+    return
+    @@
     let right = add_args (symb "*") [ y; z ] in
     add_args (symb "+") [ x; right ]
   in
-  Alcotest.(check tterm) "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
 
 let appl_opertor () =
   let tbl =
@@ -97,23 +132,23 @@ let appl_opertor () =
   let f = symb "f" in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ f; x; symb "+"; x ] in
-  let parsed = add_args (symb "+") [ Support.make_appl f x; x ] in
-  Alcotest.(check tterm) "f x + x" (SupPrat.expression tbl not_parsed) parsed
+  let parsed = return @@ add_args (symb "+") [ Support.make_appl f x; x ] in
+  Alcotest.check rtterm "f x + x" (SupPrat.expression tbl not_parsed) parsed
 
 let simple_prefix () =
   let tbl = { empty with prefix = StrMap.add "!" 1.0 StrMap.empty } in
   let x = symb "x" in
   let not_parsed = Stream.of_list [ symb "!"; x ] in
-  let parsed = Support.make_appl (symb "!") x in
-  Alcotest.(check tterm) "! x" (SupPrat.expression tbl not_parsed) parsed
+  let parsed = return @@ Support.make_appl (symb "!") x in
+  Alcotest.check rtterm "! x" (SupPrat.expression tbl not_parsed) parsed
 
 let prefix_appl () =
   let tbl = { empty with prefix = StrMap.add "!" 1.0 StrMap.empty } in
   let x = symb "x" in
   let f = symb "f" in
   let not_parsed = Stream.of_list [ symb "!"; f; x ] in
-  let parsed = Support.(make_appl (symb "!") (make_appl f x)) in
-  Alcotest.(check tterm) "! f x" (SupPrat.expression tbl not_parsed) parsed
+  let parsed = return @@ Support.(make_appl (symb "!") (make_appl f x)) in
+  Alcotest.check rtterm "! f x" (SupPrat.expression tbl not_parsed) parsed
 
 let prefix_appl_in () =
   let tbl = { empty with prefix = StrMap.add "!" 1.0 StrMap.empty } in
@@ -122,11 +157,12 @@ let prefix_appl_in () =
   let fac = symb "!" in
   let not_parsed = Stream.of_list [ f; fac; x ] in
   let parsed =
+    return
+    @@
     let inside = Support.make_appl fac x in
     Support.(make_appl f inside)
   in
-  Alcotest.(check tterm)
-    "f ! x = f (! x)"
+  Alcotest.check rtterm "f ! x = f (! x)"
     (SupPrat.expression tbl not_parsed)
     parsed
 
@@ -134,8 +170,8 @@ let double_prefix () =
   (* --x = -(-x) *)
   let tbl = { empty with prefix = StrMap.(add "-" 1.0 empty) } in
   let not_parsed = Stream.of_list [ symb "-"; symb "-"; symb "x" ] in
-  let parsed = Appl (symb "-", Appl (symb "-", symb "x")) in
-  Alcotest.check tterm "--x" (SupPrat.expression tbl not_parsed) parsed
+  let parsed = return @@ Appl (symb "-", Appl (symb "-", symb "x")) in
+  Alcotest.check rtterm "--x" (SupPrat.expression tbl not_parsed) parsed
 
 let precedences_left_same () =
   (* x + y * z = (x + y) * z when bp(+) = bp( * ) and both are left
@@ -148,10 +184,12 @@ let precedences_left_same () =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
   in
   let parsed =
+    return
+    @@
     let left = add_args (symb "+") [ symb "x"; symb "y" ] in
     add_args (symb "*") [ left; symb "z" ]
   in
-  Alcotest.check tterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
 
 let precedences_right_same () =
   (* x + y * z = x + (y * z) when bp(+) = bp( * ) and both are right
@@ -164,10 +202,12 @@ let precedences_right_same () =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
   in
   let parsed =
+    return
+    @@
     let right = add_args (symb "*") [ symb "y"; symb "z" ] in
     add_args (symb "+") [ symb "x"; right ]
   in
-  Alcotest.check tterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
 
 let precedences_lt_not_assoc () =
   (* x + y * z = x + (y * z) when bp(+) < bp( * ) and both are not
@@ -180,10 +220,12 @@ let precedences_lt_not_assoc () =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
   in
   let parsed =
+    return
+    @@
     let right = add_args (symb "*") [ symb "y"; symb "z" ] in
     add_args (symb "+") [ symb "x"; right ]
   in
-  Alcotest.check tterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
 
 let precedences_gt_not_assoc () =
   (* x + y * z = (x + y) * z when bp(+) > bp( * ) and both are not
@@ -198,26 +240,32 @@ let precedences_gt_not_assoc () =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
   in
   let parsed =
+    return
+    @@
     let left = add_args (symb "+") [ symb "x"; symb "y" ] in
     add_args (symb "*") [ left; symb "z" ]
   in
-  Alcotest.check tterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.check rtterm "x + y * z" (SupPrat.expression tbl not_parsed) parsed
 
 (** Postfix *)
 
 let postfix () =
   let tbl = { empty with postfix = StrMap.singleton "!" 1.0 } in
   let raw = Stream.of_list [ symb "x"; symb "!" ] in
-  let parsed = add_args (symb "!") [ symb "x" ] in
-  Alcotest.check tterm "x ! = @(!, x)" (SupPrat.expression tbl raw) parsed;
+  let parsed = return @@ add_args (symb "!") [ symb "x" ] in
+  Alcotest.check rtterm "x ! = @(!, x)" (SupPrat.expression tbl raw) parsed;
   let raw = Stream.of_list [ symb "f"; symb "x"; symb "!" ] in
-  let parsed = add_args (symb "!") [ add_args (symb "f") [ symb "x" ] ] in
-  Alcotest.check tterm "f x ! = @(!, @(f, x))"
+  let parsed =
+    return @@ add_args (symb "!") [ add_args (symb "f") [ symb "x" ] ]
+  in
+  Alcotest.check rtterm "f x ! = @(!, @(f, x))"
     (SupPrat.expression tbl raw)
     parsed;
   let raw = Stream.of_list [ symb "x"; symb "!"; symb "!" ] in
-  let parsed = add_args (symb "!") [ add_args (symb "!") [ symb "x" ] ] in
-  Alcotest.check tterm "x ! ! = @(!, @(!, x))"
+  let parsed =
+    return @@ add_args (symb "!") [ add_args (symb "!") [ symb "x" ] ]
+  in
+  Alcotest.check rtterm "x ! ! = @(!, @(!, x))"
     (SupPrat.expression tbl raw)
     parsed
 
@@ -230,9 +278,9 @@ let mixing_una_bin () =
   let tbl = { empty with infix; prefix } in
   let not_parsed = Stream.of_list [ symb "-"; symb "x"; symb "+"; symb "y" ] in
   let parsed =
-    add_args (symb "+") [ add_args (symb "-") [ symb "x" ]; symb "y" ]
+    return @@ add_args (symb "+") [ add_args (symb "-") [ symb "x" ]; symb "y" ]
   in
-  Alcotest.check tterm "(-x) + y" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.check rtterm "(-x) + y" (SupPrat.expression tbl not_parsed) parsed
 
 let mixing_una_bin_bis () =
   (* !x + y = !(x + y) when bp(+) > bp(!) *)
@@ -241,9 +289,9 @@ let mixing_una_bin_bis () =
   let tbl = { empty with infix; prefix } in
   let not_parsed = Stream.of_list [ symb "!"; symb "x"; symb "+"; symb "y" ] in
   let parsed =
-    add_args (symb "!") [ add_args (symb "+") [ symb "x"; symb "y" ] ]
+    return @@ add_args (symb "!") [ add_args (symb "+") [ symb "x"; symb "y" ] ]
   in
-  Alcotest.check tterm "!(x + y)" (SupPrat.expression tbl not_parsed) parsed
+  Alcotest.check rtterm "!(x + y)" (SupPrat.expression tbl not_parsed) parsed
 
 let postfix_mixes_infix () =
   let tbl =
@@ -257,16 +305,16 @@ let postfix_mixes_infix () =
   in
   let raw = Stream.of_list [ symb "x"; symb "!"; symb "+"; symb "y" ] in
   let parsed =
-    add_args (symb "+") [ add_args (symb "!") [ symb "x" ]; symb "y" ]
+    return @@ add_args (symb "+") [ add_args (symb "!") [ symb "x" ]; symb "y" ]
   in
-  Alcotest.check tterm "x ! + y = @(+, @(!, x), y)"
+  Alcotest.check rtterm "x ! + y = @(+, @(!, x), y)"
     (SupPrat.expression tbl raw)
     parsed;
   let raw = Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "!" ] in
   let parsed =
-    add_args (symb "+") [ symb "x"; add_args (symb "!") [ symb "y" ] ]
+    return @@ add_args (symb "+") [ symb "x"; add_args (symb "!") [ symb "y" ] ]
   in
-  Alcotest.check tterm "x + y ! = @(+, x, @(!, y))"
+  Alcotest.check rtterm "x + y ! = @(+, x, @(!, y))"
     (SupPrat.expression tbl raw)
     parsed
 
@@ -279,13 +327,17 @@ let postfix_mixes_prefix () =
     }
   in
   let raw = Stream.of_list [ symb "-"; symb "x"; symb "!" ] in
-  let parsed = add_args (symb "!") [ add_args (symb "-") [ symb "x" ] ] in
-  Alcotest.check tterm "- x ! = @(!, @(-, x))"
+  let parsed =
+    return @@ add_args (symb "!") [ add_args (symb "-") [ symb "x" ] ]
+  in
+  Alcotest.check rtterm "- x ! = @(!, @(-, x))"
     (SupPrat.expression tbl raw)
     parsed;
   let raw = Stream.of_list [ symb "+"; symb "x"; symb "!" ] in
-  let parsed = add_args (symb "+") [ add_args (symb "!") [ symb "x" ] ] in
-  Alcotest.check tterm "+ x ! = @(+, @(!, x))"
+  let parsed =
+    return @@ add_args (symb "+") [ add_args (symb "!") [ symb "x" ] ]
+  in
+  Alcotest.check rtterm "+ x ! = @(+, @(!, x))"
     (SupPrat.expression tbl raw)
     parsed
 
@@ -300,19 +352,13 @@ let postfix_exn () =
     }
   in
   let raw = Stream.of_list [ symb "!"; symb "x" ] in
-  Alcotest.check tterm "! x fails on !"
-    (try
-       ignore (SupPrat.expression tbl raw);
-       assert false
-     with SupPrat.UnexpectedPostfix t -> t)
-    (symb "!");
+  Alcotest.check rtterm "! x"
+    (SupPrat.expression tbl raw)
+    (error @@ `UnexpectedPostfix (symb "!"));
   let raw = Stream.of_list [ symb "-"; symb "x"; symb "!" ] in
-  Alcotest.check tterm "- x ! conflict"
-    (try
-       ignore (SupPrat.expression tbl raw);
-       assert false
-     with SupPrat.OpConflict (_, t) -> t)
-    (symb "!")
+  Alcotest.check rtterm "- x !"
+    (SupPrat.expression tbl raw)
+    (error @@ `OpConflict (symb "x", symb "!"))
 
 let precedences_eq_not_assoc () =
   (* x + y * z fails when bp(+) = bp( * ) and both are not associative *)
@@ -323,37 +369,25 @@ let precedences_eq_not_assoc () =
   let not_parsed =
     Stream.of_list [ symb "x"; symb "+"; symb "y"; symb "*"; symb "z" ]
   in
-  Alcotest.(check bool)
-    "x + y * z"
-    (try
-       ignore (SupPrat.expression tbl not_parsed);
-       false
-     with SupPrat.OpConflict (_, _) -> true)
-    true
+  Alcotest.check rtterm "x + y * z"
+    (error @@ `OpConflict (symb "y", symb "*"))
+    (SupPrat.expression tbl not_parsed)
 
-let partial_infix () =
-  let tbl = StrMap.singleton "+" (1.0, Pratter.Left) in
-  let tbl = { empty with infix = tbl } in
+let partial () =
+  let tbl =
+    {
+      empty with
+      infix = StrMap.singleton "+" (1.0, Pratter.Left)
+    ; prefix = StrMap.singleton "!" 1.0
+    }
+  in
   let not_parsed = Stream.of_list [ symb "x"; symb "+" ] in
-  Alcotest.(check bool)
-    "x +"
-    (try
-       ignore (SupPrat.expression tbl not_parsed);
-       false
-     with SupPrat.TooFewArguments -> true)
-    true
-
-let partial_prefix () =
-  let tbl = StrMap.singleton "!" 1.0 in
-  let tbl = { empty with prefix = tbl } in
-  let not_parsed = Stream.of_list [ symb "!" ] in
-  Alcotest.(check bool)
-    "!"
-    (try
-       ignore (SupPrat.expression tbl not_parsed);
-       false
-     with SupPrat.TooFewArguments -> true)
-    true
+  Alcotest.check rtterm "x +"
+    (SupPrat.expression tbl not_parsed)
+    (error `TooFewArguments);
+  Alcotest.check rtterm "!"
+    (SupPrat.expression tbl (Stream.of_list [ symb "!" ]))
+    (error `TooFewArguments)
 
 let bin_start_expr () =
   (* [+ x x] raises [UnexpectInfix +]: [+] has no left context. *)
@@ -361,12 +395,9 @@ let bin_start_expr () =
     { empty with infix = StrMap.singleton "+" (1.0, Pratter.Neither) }
   in
   let not_parsed = Stream.of_list [ symb "+"; symb "x"; symb "x" ] in
-  Alcotest.check tterm "+ x x"
-    (try
-       ignore (SupPrat.expression tbl not_parsed);
-       assert false
-     with SupPrat.UnexpectedInfix t -> t)
-    (symb "+")
+  Alcotest.check rtterm "+ x x"
+    (SupPrat.expression tbl not_parsed)
+    (error @@ `UnexpectedInfix (symb "+"))
 
 let bin_bin () =
   (* x + + x raises [UnexpectInfix +]: the second [+] has no left context. *)
@@ -374,12 +405,9 @@ let bin_bin () =
     { empty with infix = StrMap.singleton "+" (1.0, Pratter.Neither) }
   in
   let not_parsed = Stream.of_list [ symb "x"; symb "+"; symb "+"; symb "x" ] in
-  Alcotest.check tterm "x + + x"
-    (try
-       ignore (SupPrat.expression tbl not_parsed);
-       assert false
-     with SupPrat.UnexpectedInfix t -> t)
-    (symb "+")
+  Alcotest.check rtterm "x + + x"
+    (SupPrat.expression tbl not_parsed)
+    (error @@ `UnexpectedInfix (symb "+"))
 
 (** Qcheck tests *)
 
@@ -429,14 +457,10 @@ let constant_leaf_amount =
     Test.make ~name:"parsing_constant_leaf_amount" ~count:100 term_list
       (fun l ->
         assume (l <> []);
-        try
-          count_symb (SupPrat.expression table (Stream.of_list l))
-          = List.fold_right (fun t -> ( + ) (count_symb t)) l 0
-        with
-        | SupPrat.UnexpectedInfix _ | SupPrat.UnexpectedPostfix _
-        | SupPrat.TooFewArguments | SupPrat.OpConflict _
-        ->
-          true))
+        match SupPrat.expression table (Stream.of_list l) with
+        | Ok t ->
+            count_symb t = List.fold_right (fun t -> ( + ) (count_symb t)) l 0
+        | Error _ -> true))
 
 (** The depth of the parsed term is superior than the maximal depth of the input
     terms. *)
@@ -444,14 +468,9 @@ let greater_depth_parsed =
   QCheck.(
     Test.make ~name:"more_depth_in_parsed_exp" ~count:100 term_list (fun l ->
         assume (l <> []);
-        try
-          depth (SupPrat.expression table (Stream.of_list l))
-          > List.(map depth l |> fold_left max 0)
-        with
-        | SupPrat.UnexpectedInfix _ | SupPrat.UnexpectedPostfix _
-        | SupPrat.TooFewArguments | SupPrat.OpConflict _
-        ->
-          true))
+        match SupPrat.expression table (Stream.of_list l) with
+        | Ok t -> depth t > List.(map depth l |> fold_left max 0)
+        | Error _ -> true))
 
 (** When the table is empty, parsing a list only builds an n-ary application. *)
 let empty_table_id =
@@ -459,10 +478,10 @@ let empty_table_id =
     (fun l ->
       QCheck.assume (l <> []);
       let sequential_application =
-        List.(fold_left Support.make_appl (hd l) (tl l))
+        return @@ List.(fold_left Support.make_appl (hd l) (tl l))
       in
       let parsed = SupPrat.expression empty (Stream.of_list l) in
-      TTerm.equal sequential_application parsed)
+      RTTerm.equal sequential_application parsed)
 
 let _ =
   let qsuite =
@@ -505,8 +524,7 @@ let _ =
         ] )
     ; ( "errors"
       , [
-          test_case "partial infix" `Quick partial_infix
-        ; test_case "partial prefix" `Quick partial_prefix
+          test_case "partial infix/prefix" `Quick partial
         ; test_case "infix no left" `Quick bin_start_expr
         ; test_case "infix successive" `Quick bin_bin
         ] )
