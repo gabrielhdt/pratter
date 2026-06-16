@@ -63,10 +63,10 @@ module Make : functor (Sup : SUPPORT) -> sig
       represented as [@(@(@(@(3,+),5),+),2)] (where [@] is the application) into
       [(@(+(@(+,3,5)),2)].
 
-      @raises TooFewArguments when the stream [s] is empty or does not have
-                              enough elements.
-      @raises OpConflict when the input terms cannot be parenthesised
-                         unambiguously. *)
+      @raise TooFewArguments when the stream [s] is empty or does not have
+                             enough elements.
+      @raise OpConflict when the input terms cannot be parenthesised
+                        unambiguously. *)
 end =
 functor
   (Sup : SUPPORT)

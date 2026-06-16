@@ -2,6 +2,8 @@
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.1] -- 2021-01-23
 ### Added
 - Non associative operators
 - Error handling on partially applied operators (which raises a
