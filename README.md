@@ -61,4 +61,4 @@ $ ./a.out
   involved than the one in this readme.
 
 You can report issues, ask questions or start discussions using the
-[issue tracker](https://github.com/Deducteam/pratter).
+[issue tracker](https://github.com/Deducteam/pratter/issues).
