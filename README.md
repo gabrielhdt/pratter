@@ -2,12 +2,19 @@
 
 By Gabriel Hondet
 
-Pratter allows to transform strings of symbols and mixfix operators to full
-binary trees.
-Pratter is convenient for parsing languages made of terms with many mixfix
-operators with different associativities and precedences such as
-arithmetic or λ-calculi.
-In contrast to parser generators, parsing rules can be edited dynamically.
+Pratter is a library that allows to parse expressions with infix, postfix or
+prefix operators.
+
+Pratter is a _top-down operator precedence parser_ that implements the [Pratt
+parsing algorithm](https://web.archive.org/web/20151223215421/http://hall.org.ua/halls/wizzard/pdf/Vaughan.Pratt.TDOP.pdf).
+In contrast with [Menhir](https://gallium.inria.fr/~fpottier/menhir/)
+or ocamlyacc, Pratter is a parser, not a parser generator:
+no code is produced during compilation.
+In consequence, parsing rules can be modified
+dynamically. On the other hand, Pratter parses
+a much more restricted class of grammars called
+[_operator grammars_](https://en.wikipedia.org/wiki/Operator-precedence_grammar)
+while Menhir and ocamlyacc parse LR(1) and LALR(1) grammars respectively.
 
 You are free to copy, modify and distribute Pratter with attribution under the
 terms of the BSD 3 Clause license. See the [license](./LICENSE) for more details.
@@ -25,6 +32,8 @@ $ make install
 ```
 
 To ensure it's working write the following code in some file `plus.ml`
+to parse the language defined by the grammar `T ::= T + T | id`
+where `id` denotes identifiers
 ```ocaml
 type t = A of t * t | S of string
 let appl t u = A (t, u)
@@ -44,9 +53,6 @@ $ ocamlc plus_.ml
 $ ./a.out
 ```
 
-The aforementioned code defines a parser for the language made of strings
-interspersed with infix `+` operators
-
 ## What next?
 
 - There's a [change log](./CHANGELOG.md).
@@ -54,6 +60,5 @@ interspersed with infix `+` operators
 - [This file](./t/simple.ml) is another use case example that is slightly more
   involved than the one in this readme.
 
-You can raise issues either using the [issue
-tracker](https://forge.tedomum.net/koizel/pratter/issues)
-or sending an email to `<koizel#pratter@aleeas.com>`.
+You can report issues, ask questions or start discussions using the
+[issue tracker](https://forge.tedomum.net/koizel/pratter/issues).
