@@ -1,5 +1,5 @@
 opam-version: "2.0"
-version: "1.2.1"
+version: "2.0.0"
 synopsis: "An extended Pratt parser"
 description: """
 Pratter is a library that provides a parser that transforms
@@ -35,4 +35,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/gabrielhdt/pratter.git"
+dev-repo: "git+https://forge.tedomum.net/koizel/pratter"
