@@ -395,7 +395,7 @@ let greater_depth_parsed =
         | Error _ -> true))
 
 (** When there's no operator, parsing a list only builds an n-ary application.
- *)
+*)
 let empty_table_id =
   QCheck.Test.make ~name:"parsing_identity_empty_table" ~count:100 term_list
     (fun l ->

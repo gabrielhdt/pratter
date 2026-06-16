@@ -16,8 +16,8 @@ let on_symb : (string -> 'a option) -> t -> 'a option =
 let appl t u = Appl (t, u)
 let symb id = Symb id
 
-(** [add_args t args] creates the application of [t] to the list of
-    arguments [args]. *)
+(** [add_args t args] creates the application of [t] to the list of arguments
+    [args]. *)
 let rec add_args : t -> t list -> t =
  fun hd args ->
   match args with [] -> hd | a :: args -> add_args (Appl (hd, a)) args

@@ -6,7 +6,7 @@ pkgs.mkShell {
     inherit (pkgs.ocamlPackages)
       ocaml
       ocaml-lsp
-      ocamlformat_0_26_2
+      ocamlformat_0_27_0
       utop
       dune-release
       dune_3
